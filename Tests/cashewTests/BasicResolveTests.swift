@@ -171,6 +171,9 @@ struct BasicResolveTests {
         let originalHeader = try await HeaderImpl.create(node: originalNode)
         let originalCID = originalHeader.rawCID
         
+        print(originalHeader)
+        print(originalNode)
+        
         // Simulate fetching from storage
         let fetcher = SimpleFetcher(responses: [originalCID: originalNode.description])
         
@@ -180,7 +183,10 @@ struct BasicResolveTests {
         
         // Verify content addressability
         #expect(resolvedHeader.rawCID == originalCID)
-        #expect(resolvedHeader.node?.id == "content-test")
+        #expect(resolvedHeader.node!.id == "content-test")
+        
+        print(resolvedHeader)
+        print(resolvedHeader.node)
         
         // Verify we can recreate the same CID
         let recreatedCID = try await resolvedHeader.recreateCID()

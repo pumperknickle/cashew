@@ -57,20 +57,8 @@ public extension Header {
     }
     
     private static func serializeNode(_ node: NodeType, codec: Codecs) throws -> Data {
-        switch codec.name {
-        case "dag-json":
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            return try encoder.encode(node.toData())
-        case "dag-cbor", "dag-pb", "raw":
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            return try encoder.encode(node.toData())
-        default:
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            return try encoder.encode(node.toData())
-        }
+        // node.toData() already returns properly formatted JSON with sorted keys
+        return node.toData() ?? Data()
     }
     
     func mapToData() throws -> Data {

@@ -40,15 +40,16 @@ public extension MerkleDictionary {
     }
     
     func resolveRecursive(fetcher: Fetcher) async throws -> Self {
-        var newProperties: [PathSegment: Address] = [:]
+        let newProperties = ThreadSafeDictionary<PathSegment, Address>()
         
         try await properties().concurrentForEach { property in
             if let address = get(property: property) {
-                newProperties[property] = try await address.resolveRecursive(fetcher: fetcher)
+                let resolvedAddress = try await address.resolveRecursive(fetcher: fetcher)
+                await newProperties.set(property, value: resolvedAddress)
             }
         }
         
-        return set(properties: newProperties)
+        return set(properties: await newProperties.allKeyValuePairs())
     }
     
     func resolve(fetcher: Fetcher) async throws -> Self {

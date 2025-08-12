@@ -23,7 +23,9 @@ public extension Node {
     }
     
     func toData() -> Data? {
-        return try? JSONEncoder().encode(keepingOnlyLinks())
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try? encoder.encode(keepingOnlyLinks())
     }
     
     init?(_ description: String) {
