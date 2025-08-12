@@ -7,6 +7,10 @@ actor ThreadSafeDictionary<Key: Hashable, Value>: Sendable {
         storage[key] = value
     }
     
+    func get(_ key: Key) -> Value? {
+        return storage[key]
+    }
+    
     func allKeyValuePairs() -> [Key: Value] {
         return storage
     }

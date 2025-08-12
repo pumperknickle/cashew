@@ -1,13 +1,13 @@
 {
-  "originHash" : "f2dd40fe587438c45668d37b609af45ca7b37305111f9d290c7a1ee6d46cf0d7",
+  "originHash" : "cc606a0d7a4b1311e91f9fe7d531e4117d4168816c0075fd15eb72bf5dea30ec",
   "pins" : [
     {
       "identity" : "arraytrie",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pumperknickle/ArrayTrie.git",
       "state" : {
-        "revision" : "f66af743e8b5c06d2404e69a3cc366cdc69a7fcc",
-        "version" : "0.0.9"
+        "revision" : "38d4be677fcbe6ecfc8e0150319d5f0c21970149",
+        "version" : "0.1.2"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/krzyzanowskim/CryptoSwift.git",
       "state" : {
-        "revision" : "729e01bc9b9dab466ac85f21fb9ee2bc1c61b258",
-        "version" : "1.8.4"
+        "revision" : "132f5b209cd0251067f29cdb59c97d9f8a63252a",
+        "version" : "1.8.5"
       }
     },
     {
@@ -114,8 +114,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pumperknickle/TrieDictionary.git",
       "state" : {
-        "revision" : "ef8ecc03c7f90259c12d5556769f584c317866aa",
-        "version" : "0.0.5"
+        "revision" : "ad00e4af83d2b3b49ab7f5e68ba7d76d282b9e5a",
+        "version" : "0.0.8"
       }
     }
   ],

@@ -9,17 +9,34 @@ public protocol RadixNode: Node {
     init(prefix: String, value: ValueType?, children: [Character: ChildType])
 }
 
-extension RadixNode {
+public extension RadixNode {
+    
+    func set(properties: [PathSegment : any Address]) -> Self {
+        var newProperties = [Character: ChildType]()
+        for property in properties.keys {
+            newProperties.updateValue(properties[property] as! ChildType, forKey: property.first!)
+        }
+        return Self(prefix: prefix, value: value, children: newProperties)
+    }
     
     func set(properties: [Character: ChildType]) -> Self {
         return Self(prefix: prefix, value: value, children: properties)
     }
     
-    func get(property: PathSegment) -> ChildType {
-        return children[Character(property)]!
+    func get(property: PathSegment) -> Address? {
+        guard let char = property.first else { return nil }
+        return children[char]
+    }
+    
+    func getChild(property: PathSegment) -> ChildType {
+        return children[property.first!]!
     }
     
     func properties() -> Set<PathSegment> {
         return Set(children.keys.map({ character in String(character) }))
+    }
+    
+    func set(property: PathSegment, to child: any Address) -> Self {
+        return self
     }
 }

@@ -1,3 +1,6 @@
-enum DataError: Error {
-    case missingData
+public enum DataErrors: Error {
+    case nodeNotAvailable
+    case serializationFailed
+    case cidCreationFailed
 }
+

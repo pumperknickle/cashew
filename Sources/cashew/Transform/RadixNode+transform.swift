@@ -1,7 +1,7 @@
 import ArrayTrie
 
-extension RadixNode {
-    func transform(transforms: ArrayTrie<Transform>) throws -> Self {
+public extension RadixNode {
+    func transform(transforms: ArrayTrie<Transform>) throws -> Self? {
         return self
     }
 }

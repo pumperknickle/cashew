@@ -1,33 +1,43 @@
 import ArrayTrie
 
-extension Node {
+public extension Node {
     func resolveRecursive(fetcher: Fetcher) async throws -> Self {
-        var newProperties = ThreadSafeDictionary<PathSegment, Address>()
+        var newProperties: [PathSegment: Address] = [:]
         
         try await properties().concurrentForEach { property in
-            try await newProperties.set(property, value: get(property: property).resolveRecursive(fetcher: fetcher))
+            if let address = get(property: property) {
+                newProperties[property] = try await address.resolveRecursive(fetcher: fetcher)
+            }
         }
         
-        return await set(properties: newProperties.allKeyValuePairs())
+        return set(properties: newProperties)
     }
     
     func resolve(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
-        var newProperties = ThreadSafeDictionary<PathSegment, Address>()
+        var newProperties: [PathSegment: Address] = [:]
         
         try await properties().concurrentForEach { property in
+            guard let address = get(property: property) else { return }
+            
             if paths.get([property]) == .recursive {
-                try await newProperties.set(property, value: get(property: property).resolveRecursive(fetcher: fetcher))
+                newProperties[property] = try await address.resolveRecursive(fetcher: fetcher)
             }
             else if let nextPaths = paths.traverse([property]) {
                 if (!nextPaths.isEmpty()) {
-                    try await newProperties.set(property, value: get(property: property).resolve(paths: nextPaths, fetcher: fetcher))
+                    newProperties[property] = try await address.resolve(paths: nextPaths, fetcher: fetcher)
                 }
                 else if paths.get([property]) == .targeted {
-                    try await newProperties.set(property, value: get(property: property).resolve(fetcher: fetcher))
+                    newProperties[property] = try await address.resolve(fetcher: fetcher)
                 }
+                else {
+                    newProperties[property] = address
+                }
+            }
+            else {
+                newProperties[property] = address
             }
         }
         
-        return await set(properties: newProperties.allKeyValuePairs())
+        return set(properties: newProperties)
     }
 }

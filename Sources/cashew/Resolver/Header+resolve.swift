@@ -1,8 +1,8 @@
 import ArrayTrie
 
-extension Header {
+public extension Header {
+    
     func resolve(paths: [[String]: ResolutionStrategy], fetcher: Fetcher) async throws -> Self {
-        if paths.isEmpty { return self }
         var pathTrie = ArrayTrie<ResolutionStrategy>()
         for (path, strategy) in paths {
             pathTrie.set(path, value: strategy)
@@ -11,6 +11,8 @@ extension Header {
     }
     
     func resolve(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
+        // Check if paths is truly empty (no root value and no children)
+        if paths.isEmpty() && paths.get([]) == nil { return self }
         if let node = node {
             let resolvedNode = try await node.resolve(paths: paths, fetcher: fetcher)
             return Self(rawCID: rawCID, node: resolvedNode)
@@ -37,7 +39,7 @@ extension Header {
     }
     
     func resolve(fetcher: Fetcher) async throws -> Self {
-        if let node = node {
+        if node != nil {
             return self
         }
         else {
