@@ -10,6 +10,31 @@ public protocol RadixNode: Node {
 }
 
 public extension RadixNode {
+    func keepingOnlyLinks() -> Self {
+        var newProperties = [String: Address]()
+        for property in properties() {
+            newProperties[property] = get(property: property)!.removingNode()
+        }
+        if value is Address {
+            if let value = value {
+                let newValue = (value as! Address).removingNode() as! ValueType
+                let newNode = set(properties: newProperties)
+                return Self(prefix: prefix, value: newValue, children: newNode.children)
+            }
+        }
+        return set(properties: newProperties)
+    }
+    
+    func storeRecursively(storer: Storer) throws {
+        try properties().forEach { property in
+            try get(property: property)?.storeRecursively(storer: storer)
+        }
+        if value is Address {
+            if let value = value {
+                try (value as! Address).storeRecursively(storer: storer)
+            }
+        }
+    }
     
     func set(properties: [PathSegment : any Address]) -> Self {
         var newProperties = [Character: ChildType]()

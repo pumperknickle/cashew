@@ -50,9 +50,7 @@ public extension RadixHeader {
             return Self(rawCID: rawCID, node: newNode)
         }
     }
-}
-
-public extension RadixHeader where NodeType.ValueType: Address {
+    
     func resolveList(paths: ArrayTrie<ResolutionStrategy>?, nextPaths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
         if let node = node {
             return Self(rawCID: rawCID, node: try await node.resolveList(paths: paths, nextPaths: nextPaths, fetcher: fetcher))

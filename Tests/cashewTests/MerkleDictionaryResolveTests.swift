@@ -451,5 +451,63 @@ struct MerkleDictionaryResolveTests {
         #expect(resolvedDictionary.node!.children["3"] != nil)
         #expect(resolvedDictionary.node!.children["3"]!.node == nil)
     }
+    
+    @Test("MerkleDictionary deep list resolve")
+    func testMerkleDictionaryDeepListResolve() async throws {
+        typealias HigherRadixNode = RadixNodeImpl<BaseDictionaryHeader>
+        typealias HigherRadixHeader = RadixHeaderImpl<BaseDictionaryHeader>
+        typealias HigherDictionaryHeader = HeaderImpl<HigherDictionaryType>
+        typealias HigherDictionaryType = MerkleDictionaryImpl<HigherRadixNode.ValueType>
+        typealias BaseDictionaryHeader = HeaderImpl<BaseDictionaryType>
+        typealias BaseDictionaryType = MerkleDictionaryImpl<HeaderImpl<TestBaseStructure>>
+        typealias BaseRadixHeader = RadixHeaderImpl<HeaderImpl<TestBaseStructure>>
+        typealias BaseRadixNode = RadixNodeImpl<HeaderImpl<TestBaseStructure>>
+        
+        // base structure + headers
+        let baseStructure1 = TestBaseStructure(val: 1)
+        let baseStructure2 = TestBaseStructure(val: 2)
+        let baseHeader1 = HeaderImpl(node: baseStructure1)
+        let baseHeader2 = HeaderImpl(node: baseStructure2)
+        
+        
+        let radixNode1 = BaseRadixNode(prefix: "Foo", value: baseHeader1, children: [:])
+        let radixNode2 = BaseRadixNode(prefix: "Bar", value: baseHeader2, children: [:])
+        let radixHeader1 = RadixHeaderImpl(node: radixNode1)
+        let radixHeader2 = RadixHeaderImpl(node: radixNode2)
+        let dictionary = BaseDictionaryType(children: ["F": radixHeader1, "B": radixHeader2], count: 2)
+        let dictionaryHeader = HeaderImpl(node: dictionary)
+        
+        let radixNode3 = HigherRadixNode(prefix: "Foo", value: dictionaryHeader, children: [:])
+        let radixNode4 = HigherRadixNode(prefix: "Bar", value: dictionaryHeader, children: [:])
+        let radixHeader3 = HigherRadixHeader(node: radixNode3)
+        let radixHeader4 = HigherRadixHeader(node: radixNode4)
+        
+        let higherDictionary = HigherDictionaryType(children: ["F": radixHeader3, "B": radixHeader4], count: 2)
+        let higherDictionaryHeader = HeaderImpl(node: higherDictionary)
+        
+        let testStoreFetcher = TestStoreFetcher()
+        try higherDictionaryHeader.storeRecursively(storer: testStoreFetcher)
+        let newDictionaryHeader = HigherDictionaryHeader(rawCID: higherDictionaryHeader.rawCID)
+        var resolutionPaths = ArrayTrie<ResolutionStrategy>()
+        resolutionPaths.set(["Foo", "Foo"], value: ResolutionStrategy.targeted)
+        resolutionPaths.set(["Fo"], value: ResolutionStrategy.list)
+        let resolvedDictionary = try await newDictionaryHeader.resolve(paths: resolutionPaths, fetcher: testStoreFetcher)
+        #expect(resolvedDictionary.node != nil)
+        #expect(resolvedDictionary.node!.count == 2)
+        #expect(resolvedDictionary.node!.children["F"] != nil)
+        #expect(resolvedDictionary.node!.children["F"]!.node != nil)
+        #expect(resolvedDictionary.node!.children["F"]!.node!.prefix == "Foo")
+        #expect(resolvedDictionary.node!.children["F"]!.node!.value != nil)
+        #expect(resolvedDictionary.node!.children["F"]!.node!.value!.node != nil)
+        #expect(resolvedDictionary.node!.children["B"] != nil)
+        #expect(resolvedDictionary.node!.children["B"]!.node == nil)
+        #expect(resolvedDictionary.node!.children["F"]!.node!.value!.node!.children["F"] != nil)
+        #expect(resolvedDictionary.node!.children["F"]!.node!.value!.node!.children["F"]!.node != nil)
+        #expect(resolvedDictionary.node!.children["F"]!.node!.value!.node!.children["F"]!.node!.value != nil)
+        #expect(resolvedDictionary.node!.children["F"]!.node!.value!.node!.children["F"]!.node!.value!.node != nil)
+        #expect(resolvedDictionary.node!.children["F"]!.node!.value!.node!.children["F"]!.node!.value!.node!.val == 1)
+        #expect(resolvedDictionary.node!.children["F"]!.node!.value!.node!.children["B"] != nil)
+        #expect(resolvedDictionary.node!.children["F"]!.node!.value!.node!.children["B"]!.node == nil)
+    }
 
 }

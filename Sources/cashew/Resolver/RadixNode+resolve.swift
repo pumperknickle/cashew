@@ -2,6 +2,67 @@ import ArrayTrie
 
 public extension RadixNode {
     func resolve(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
+        if (value is Address) {
+            let pathValuesAndTries = paths.getValuesAlongPath(prefix)
+            if pathValuesAndTries.map({ $0.1 }).contains(.recursive) {
+                return try await resolveRecursive(fetcher: fetcher)
+            }
+            let listTries = pathValuesAndTries.filter { $0.1 == .list }.map { $0.0 }
+            if listTries.isEmpty {
+                let newProperties = ThreadSafeDictionary<Character, ChildType>()
+                guard let traversalPaths = paths.traverse(path: prefix) else { return self }
+                try await properties().concurrentForEach { property in
+                    if let propertyTraversal = traversalPaths.traverseChild(property.first!) {
+                        let childValue = try await getChild(property: property).resolve(paths: propertyTraversal, fetcher: fetcher)
+                        await newProperties.set(property.first!, value: childValue)
+                    }
+                    else {
+                        await newProperties.set(property.first!, value: getChild(property: property))
+                    }
+                }
+                let resolved = await set(properties: newProperties.allKeyValuePairs())
+                if let value = value {
+                    if let downstreamPaths = paths.traverse([prefix]) {
+                        guard let resolvedValue = try await (value as! Address).resolve(paths: downstreamPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                        return Self(prefix: resolved.prefix, value: resolvedValue, children: resolved.children)
+                    }
+                    if paths.get([prefix]) == .targeted {
+                        guard let resolvedValue = try await (value as! Address).resolve(fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                        return Self(prefix: resolved.prefix, value: resolvedValue, children: resolved.children)
+                    }
+                }
+                return resolved
+            }
+            let traversalTrie = ArrayTrie<ResolutionStrategy>.mergeAll(tries: listTries) { leftStrategy, rightStrategy in
+                if leftStrategy == .recursive || rightStrategy == .recursive {
+                    return .recursive
+                }
+                if leftStrategy == .list || rightStrategy == .list {
+                    return .list
+                }
+                return .targeted
+            }
+            let resolved = try await resolveList(paths: paths.traverse(path: prefix), nextPaths: traversalTrie, fetcher: fetcher)
+            if let value = value {
+                guard let resolvedValue = try await (value as! Address).resolve(fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                if let downstreamPaths = paths.traverse([prefix]) {
+                    let mergedDownstreamPaths = traversalTrie.merging(with: downstreamPaths, mergeRule: { leftStrategy, rightStrategy in
+                        if leftStrategy == .recursive || rightStrategy == .recursive {
+                            return .recursive
+                        }
+                        if leftStrategy == .list || rightStrategy == .list {
+                            return .list
+                        }
+                        return .targeted
+                    })
+                    guard let newValue = try await (resolvedValue as! Address).resolve(paths: mergedDownstreamPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                    return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
+                }
+                guard let newValue = try await (resolvedValue as! Address).resolve(paths: traversalTrie, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
+            }
+            return resolved
+        }
         let newProperties = ThreadSafeDictionary<Character, ChildType>()
         
         // Check if root level has list or recursive strategy
@@ -44,81 +105,19 @@ public extension RadixNode {
     }
     
     func resolveRecursive(fetcher: Fetcher) async throws -> Self {
-        return try await resolveRecursiveCommon(fetcher: fetcher)
+        let resolved = try await resolveRecursiveCommon(fetcher: fetcher)
+        if (value is Address) {
+            if let value = value {
+                guard let newValue = try await (value as! Address).resolveRecursive(fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
+            }
+            return resolved
+        }
+        return resolved
     }
     
     func resolveList(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
         return try await resolveRecursive(fetcher: fetcher)
-    }
-}
-
-public extension RadixNode where ValueType: Address {
-    func resolveRecursive(fetcher: Fetcher) async throws -> Self {
-        let resolved = try await resolveRecursiveCommon(fetcher: fetcher)
-        if let value = value {
-            return Self(prefix: resolved.prefix, value: try await value.resolveRecursive(fetcher: fetcher), children: resolved.children)
-        }
-        return resolved
-    }
-    
-    func resolve(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
-        let pathValuesAndTries = paths.getValuesAlongPath(prefix)
-        if pathValuesAndTries.map({ $0.1 }).contains(.recursive) {
-            return try await resolveRecursive(fetcher: fetcher)
-        }
-        let listTries = pathValuesAndTries.filter { $0.1 == .list }.map { $0.0 }
-        if listTries.isEmpty {
-            let newProperties = ThreadSafeDictionary<Character, ChildType>()
-            guard let traversalPaths = paths.traverse(path: prefix) else { return self }
-            try await properties().concurrentForEach { property in
-                if let propertyTraversal = traversalPaths.traverseChild(property.first!) {
-                    let childValue = try await getChild(property: property).resolve(paths: propertyTraversal, fetcher: fetcher)
-                    await newProperties.set(property.first!, value: childValue)
-                }
-                else {
-                    await newProperties.set(property.first!, value: getChild(property: property))
-                }
-            }
-            let resolved = await set(properties: newProperties.allKeyValuePairs())
-            if let value = value {
-                if let downstreamPaths = paths.traverse([prefix]) {
-                    return await Self(prefix: resolved.prefix, value: try value.resolve(paths: downstreamPaths, fetcher: fetcher), children: resolved.children)
-                }
-                if paths.get([prefix]) == .targeted {
-                    return await Self(prefix: resolved.prefix, value: try value.resolve(fetcher: fetcher), children: resolved.children)
-                }
-            }
-            return resolved
-        }
-        let traversalTrie = ArrayTrie<ResolutionStrategy>.mergeAll(tries: listTries) { leftStrategy, rightStrategy in
-            if leftStrategy == .recursive || rightStrategy == .recursive {
-                return .recursive
-            }
-            if leftStrategy == .list || rightStrategy == .list {
-                return .list
-            }
-            return .targeted
-        }
-        let resolved = try await resolveList(paths: paths.traverse(path: prefix), nextPaths: traversalTrie, fetcher: fetcher)
-        if let value = value {
-            let resolvedValue = try await value.resolve(fetcher: fetcher)
-            if let downstreamPaths = paths.traverse([prefix]) {
-                let mergedDownstreamPaths = traversalTrie.merging(with: downstreamPaths, mergeRule: { leftStrategy, rightStrategy in
-                    if leftStrategy == .recursive || rightStrategy == .recursive {
-                        return .recursive
-                    }
-                    if leftStrategy == .list || rightStrategy == .list {
-                        return .list
-                    }
-                    return .targeted
-                })
-                let newValue = try await resolvedValue.resolve(paths: mergedDownstreamPaths, fetcher: fetcher)
-                return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
-            }
-            let newValue = try await resolvedValue.resolve(paths: traversalTrie, fetcher: fetcher)
-            return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
-        }
-        return resolved
     }
     
     func resolveList(paths: ArrayTrie<ResolutionStrategy>?, nextPaths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
@@ -164,9 +163,11 @@ public extension RadixNode where ValueType: Address {
                     }
                     return .targeted
                 })
-                return await Self(prefix: resolved.prefix, value: try value.resolve(paths: downstreamPaths, fetcher: fetcher), children: resolved.children)
+                guard let newValue = try await (value as! Address).resolve(paths: downstreamPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
             }
-            return await Self(prefix: resolved.prefix, value: try value.resolve(paths: finalNextPaths, fetcher: fetcher), children: resolved.children)
+            guard let newValue = try await (value as! Address).resolve(paths: finalNextPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+            return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
         }
         return resolved
     }

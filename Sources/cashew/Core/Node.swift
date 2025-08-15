@@ -14,6 +14,8 @@ public protocol Node: Codable, LosslessStringConvertible, Sendable {
     func set(properties: [PathSegment: Address]) -> Self
     
     func resolve(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self
+    func keepingOnlyLinks() -> Self
+    func storeRecursively(storer: Storer) throws
 }
 
 public extension Node {
