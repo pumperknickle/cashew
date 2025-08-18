@@ -119,7 +119,7 @@ public extension RadixNode {
         // Create child for existing path
         let existingChild = ChildType(node: Self(prefix: pathRemainder, value: self.value, children: children))
         let newChild = ChildType(node: Self(prefix: keyRemainder, value: value, children: [:]))
-        var newChildren = [pathRemainder.first!: existingChild, keyRemainder.first!: newChild]
+        let newChildren = [pathRemainder.first!: existingChild, keyRemainder.first!: newChild]
         
         return Self(prefix: common, value: nil, children: newChildren)
     }
