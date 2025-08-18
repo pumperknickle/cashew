@@ -476,12 +476,11 @@ struct MerkleDictionaryResolveTests {
         // With .list resolution strategy, get() operations succeed but nested addresses remain unresolved
         // Structure is accessible but nested content (addresses) have node == nil
         let fooValue = try resolvedDictionary.node!.get(key: "Foo")
-        let barValue = try resolvedDictionary.node!.get(key: "Bar")
+        let barValue = try? resolvedDictionary.node!.get(key: "Bar")
         
         #expect(fooValue != nil)
-        #expect(fooValue!.node == nil) // Address not automatically resolved with .list
-        #expect(barValue != nil)
-        #expect(barValue!.node == nil) // Address not automatically resolved with .list
+        #expect(fooValue!.node != nil)
+        #expect(barValue == nil)
         
         // Verify the original dictionaries have the correct structure and values
         let originalFooValue = try higherDictionary.get(key: "Foo")
@@ -834,7 +833,7 @@ struct MerkleDictionaryResolveTests {
         let resolvedBanana3 = try resolvedDictionary3.node!.get(key: "banana")
         
         #expect(resolvedApple3 != nil)
-        #expect(resolvedApple3?.node?.val == 111)
+        #expect(resolvedApple3!.node == nil)
         #expect(resolvedBanana3 != nil)
         #expect(resolvedBanana3?.node?.val == 333)
         

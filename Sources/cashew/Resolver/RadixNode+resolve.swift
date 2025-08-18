@@ -2,94 +2,64 @@ import ArrayTrie
 
 public extension RadixNode {
     func resolve(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
-        if (value is Address) {
-            let pathValuesAndTries = paths.getValuesAlongPath(prefix)
-            if pathValuesAndTries.map({ $0.1 }).contains(.recursive) {
-                return try await resolveRecursive(fetcher: fetcher)
+        let pathValuesAndTries = paths.getValuesAlongPath(prefix)
+        if pathValuesAndTries.map({ $0.1 }).contains(.recursive) {
+            return try await resolveRecursive(fetcher: fetcher)
+        }
+        let listTries = pathValuesAndTries.filter { $0.1 == .list }.map { $0.0 }
+        if listTries.isEmpty {
+            let newProperties = ThreadSafeDictionary<Character, ChildType>()
+            guard let traversalPaths = paths.traverse(path: prefix) else { return self }
+            try await properties().concurrentForEach { property in
+                if let propertyTraversal = traversalPaths.traverseChild(property.first!) {
+                    let childValue = try await getChild(property: property).resolve(paths: propertyTraversal, fetcher: fetcher)
+                    await newProperties.set(property.first!, value: childValue)
+                }
+                else {
+                    await newProperties.set(property.first!, value: getChild(property: property))
+                }
             }
-            let listTries = pathValuesAndTries.filter { $0.1 == .list }.map { $0.0 }
-            if listTries.isEmpty {
-                let newProperties = ThreadSafeDictionary<Character, ChildType>()
-                guard let traversalPaths = paths.traverse(path: prefix) else { return self }
-                try await properties().concurrentForEach { property in
-                    if let propertyTraversal = traversalPaths.traverseChild(property.first!) {
-                        let childValue = try await getChild(property: property).resolve(paths: propertyTraversal, fetcher: fetcher)
-                        await newProperties.set(property.first!, value: childValue)
-                    }
-                    else {
-                        await newProperties.set(property.first!, value: getChild(property: property))
-                    }
-                }
-                let resolved = await set(properties: newProperties.allKeyValuePairs())
-                if let value = value {
-                    if let downstreamPaths = paths.traverse([prefix]) {
-                        guard let resolvedValue = try await (value as! Address).resolve(paths: downstreamPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
-                        return Self(prefix: resolved.prefix, value: resolvedValue, children: resolved.children)
-                    }
-                    if paths.get([prefix]) == .targeted {
-                        guard let resolvedValue = try await (value as! Address).resolve(fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
-                        return Self(prefix: resolved.prefix, value: resolvedValue, children: resolved.children)
-                    }
-                }
-                return resolved
-            }
-            let traversalTrie = ArrayTrie<ResolutionStrategy>.mergeAll(tries: listTries) { leftStrategy, rightStrategy in
-                if leftStrategy == .recursive || rightStrategy == .recursive {
-                    return .recursive
-                }
-                if leftStrategy == .list || rightStrategy == .list {
-                    return .list
-                }
-                return .targeted
-            }
-            let resolved = try await resolveList(paths: paths.traverse(path: prefix), nextPaths: traversalTrie, fetcher: fetcher)
-            if let value = value {
+            let resolved = await set(properties: newProperties.allKeyValuePairs())
+            if let value = value as? Address {
                 if let downstreamPaths = paths.traverse([prefix]) {
-                    let mergedDownstreamPaths = traversalTrie.merging(with: downstreamPaths, mergeRule: { leftStrategy, rightStrategy in
-                        if leftStrategy == .recursive || rightStrategy == .recursive {
-                            return .recursive
-                        }
-                        if leftStrategy == .list || rightStrategy == .list {
-                            return .list
-                        }
-                        return .targeted
-                    })
-                    guard let newValue = try await (value as! Address).resolve(paths: mergedDownstreamPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
-                    return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
+                    guard let resolvedValue = try await value.resolve(paths: downstreamPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                    return Self(prefix: resolved.prefix, value: resolvedValue, children: resolved.children)
                 }
-                guard let newValue = try await (value as! Address).resolve(paths: traversalTrie, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
-                return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
+                if paths.get([prefix]) == .targeted {
+                    guard let resolvedValue = try await value.resolve(fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                    return Self(prefix: resolved.prefix, value: resolvedValue, children: resolved.children)
+                }
             }
             return resolved
         }
-        let newProperties = ThreadSafeDictionary<Character, ChildType>()
-        
-        // Check if root level has list or recursive strategy
-        if let rootStrategy = paths.get([prefix]) {
-            if rootStrategy == .list || rootStrategy == .recursive {
-                return try await resolveRecursive(fetcher: fetcher)
+        let traversalTrie = ArrayTrie<ResolutionStrategy>.mergeAll(tries: listTries) { leftStrategy, rightStrategy in
+            if leftStrategy == .recursive || rightStrategy == .recursive {
+                return .recursive
             }
-        }
-        
-        let pathValuesAndTries = paths.getValuesAlongPath(prefix)
-        let pathValues = Set(pathValuesAndTries.map({ $0.1 }))
-        if pathValues.contains(.recursive) || pathValues.contains(.list) {
-            return try await resolveRecursive(fetcher: fetcher)
-        }
-        
-        guard let traversalPaths = paths.traverse(path: prefix) else { return self }
-        
-        try await properties().concurrentForEach { property in
-            if let finalTraversalPaths = traversalPaths.traverseChild(property.first!) {
-                let childValue = try await getChild(property: property).resolve(paths: finalTraversalPaths, fetcher: fetcher)
-                await newProperties.set(property.first!, value: childValue)
+            if leftStrategy == .list || rightStrategy == .list {
+                return .list
             }
-            else {
-                await newProperties.set(property.first!, value: getChild(property: property))
-            }
+            return .targeted
         }
-        
-        return await set(properties: newProperties.allKeyValuePairs())
+        let resolved = try await resolveList(paths: paths.traverse(path: prefix), nextPaths: traversalTrie, fetcher: fetcher)
+        if let value = value as? Address {
+            if let downstreamPaths = paths.traverse([prefix]) {
+                let mergedDownstreamPaths = traversalTrie.merging(with: downstreamPaths, mergeRule: { leftStrategy, rightStrategy in
+                    if leftStrategy == .recursive || rightStrategy == .recursive {
+                        return .recursive
+                    }
+                    if leftStrategy == .list || rightStrategy == .list {
+                        return .list
+                    }
+                    return .targeted
+                })
+                guard let newValue = try await value.resolve(paths: mergedDownstreamPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
+            }
+            guard let newValue = try await value.resolve(paths: traversalTrie, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+            return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
+        }
+        return resolved
     }
     
     func resolveRecursiveCommon(fetcher: Fetcher) async throws -> Self {
@@ -105,12 +75,9 @@ public extension RadixNode {
     
     func resolveRecursive(fetcher: Fetcher) async throws -> Self {
         let resolved = try await resolveRecursiveCommon(fetcher: fetcher)
-        if (value is Address) {
-            if let value = value {
-                guard let newValue = try await (value as! Address).resolveRecursive(fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
-                return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
-            }
-            return resolved
+        if let value = value as? Address {
+            guard let newValue = try await value.resolveRecursive(fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+            return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
         }
         return resolved
     }
