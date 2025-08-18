@@ -44,7 +44,6 @@ public extension RadixNode {
             }
             let resolved = try await resolveList(paths: paths.traverse(path: prefix), nextPaths: traversalTrie, fetcher: fetcher)
             if let value = value {
-                guard let resolvedValue = try await (value as! Address).resolve(fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
                 if let downstreamPaths = paths.traverse([prefix]) {
                     let mergedDownstreamPaths = traversalTrie.merging(with: downstreamPaths, mergeRule: { leftStrategy, rightStrategy in
                         if leftStrategy == .recursive || rightStrategy == .recursive {
@@ -55,10 +54,10 @@ public extension RadixNode {
                         }
                         return .targeted
                     })
-                    guard let newValue = try await (resolvedValue as! Address).resolve(paths: mergedDownstreamPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                    guard let newValue = try await (value as! Address).resolve(paths: mergedDownstreamPaths, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
                     return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
                 }
-                guard let newValue = try await (resolvedValue as! Address).resolve(paths: traversalTrie, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
+                guard let newValue = try await (value as! Address).resolve(paths: traversalTrie, fetcher: fetcher) as? ValueType else { throw ResolutionErrors.TypeError }
                 return Self(prefix: resolved.prefix, value: newValue, children: resolved.children)
             }
             return resolved

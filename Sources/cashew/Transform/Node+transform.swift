@@ -1,7 +1,7 @@
 import ArrayTrie
 import CollectionConcurrencyKit
 
-public extension Node {
+public extension Node {    
     func transform(transforms: ArrayTrie<Transform>) throws -> Self? {
         if transforms.isEmpty() { return self }
         switch transforms.get([]) {
