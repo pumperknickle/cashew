@@ -454,6 +454,7 @@ struct MerkleDictionaryResolveTests {
         let dictionary = try emptyBaseDictionary
             .inserting(key: "Foo", value: baseHeader1)
             .inserting(key: "Bar", value: baseHeader2)
+            .inserting(key: "Baz", value: baseHeader2)
         let dictionaryHeader = HeaderImpl(node: dictionary)
         
         // Create higher level dictionary using inserting operations
@@ -468,6 +469,7 @@ struct MerkleDictionaryResolveTests {
         let newDictionaryHeader = HeaderImpl<HigherDictionaryType>(rawCID: higherDictionaryHeader.rawCID)
         var resolutionPaths = ArrayTrie<ResolutionStrategy>()
         resolutionPaths.set(["Foo", "Foo"], value: ResolutionStrategy.targeted)
+        resolutionPaths.set(["Fo", "Baz"], value: ResolutionStrategy.targeted)
         resolutionPaths.set(["Fo"], value: ResolutionStrategy.list)
         let resolvedDictionary = try await newDictionaryHeader.resolve(paths: resolutionPaths, fetcher: testStoreFetcher)
         #expect(resolvedDictionary.node != nil)
@@ -481,6 +483,14 @@ struct MerkleDictionaryResolveTests {
         #expect(fooValue != nil)
         #expect(fooValue!.node != nil)
         #expect(barValue == nil)
+        
+        let innerFoo = try fooValue!.node?.get(key: "Foo")
+        let innerBaz = try fooValue!.node?.get(key: "Baz")
+        
+        #expect(innerFoo != nil)
+        #expect(innerBaz != nil)
+        let innerBar = try? fooValue!.node?.get(key: "Bar")
+        #expect(innerBar == nil)
         
         // Verify the original dictionaries have the correct structure and values
         let originalFooValue = try higherDictionary.get(key: "Foo")
