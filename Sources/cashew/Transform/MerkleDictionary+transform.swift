@@ -30,7 +30,7 @@ public extension MerkleDictionary {
             else {
                 guard let traversal = transforms.traverseChild(childChar) else { throw TransformErrors.transformFailed }
                 if !traversal.isEmpty() {
-                    guard let newChild = try ChildType.NodeType.insertAll(childChar: childChar, transforms: traversal) else { throw TransformErrors.transformFailed }
+                    let newChild = try ChildType.NodeType.insertAll(childChar: childChar, transforms: traversal)
                     newChildren[childChar] = ChildType(node: newChild)
                 }
             }
