@@ -1,6 +1,31 @@
 import ArrayTrie
 
 public extension RadixNode {
+    static func insertAll(childChar: Character, transforms: ArrayTrie<Transform>) throws -> Self? {
+        guard let childPrefix = transforms.getChildPrefix(char: childChar) else { throw TransformErrors.transformFailed }
+        guard let traversedTransforms = transforms.traverse(path: childPrefix) else { throw TransformErrors.transformFailed }
+        let childChars = traversedTransforms.getAllChildCharacters()
+        var newProperties = [Character: ChildType]()
+        for childChar in childChars {
+            guard let traversedChild = traversedTransforms.traverseChild(childChar) else { throw TransformErrors.transformFailed }
+            if traversedChild.isEmpty() { throw TransformErrors.transformFailed }
+            guard let newChildAfterInsertion = try insertAll(childChar: childChar, transforms: traversedChild) else { throw TransformErrors.transformFailed }
+            let newChild = ChildType(node: newChildAfterInsertion)
+            newProperties[childChar] = newChild
+        }
+        let transform = traversedTransforms.get([""])
+        if let transform = transform {
+            switch transform {
+            case .insert(let newValue):
+                guard let newValue = ValueType(newValue) else { throw TransformErrors.transformFailed }
+                return Self(prefix: childPrefix, value: newValue, children: newProperties)
+            default:
+                throw TransformErrors.transformFailed
+            }
+        }
+        return Self(prefix: childPrefix, value: nil, children: newProperties)
+    }
+    
     func transform(transforms: ArrayTrie<Transform>) throws -> Self? {
         return self
     }

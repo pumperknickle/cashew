@@ -1,18 +1,42 @@
 import ArrayTrie
 
 public extension MerkleDictionary {
-//    func transform(transforms: ArrayTrie<Transform>) throws -> Self {
-//        let values = transforms.getValuesOneLevelDeep()
-//        var delta = 0
-//        for value in values {
-//            switch value {
-//                case .delete: delta -= 1
-//                case .insert(_): delta += 1
-//                default: continue
-//            }
-//        }
-//        return Self(root: try root.transform(transforms: transforms), count: count + delta)
-//    }
+    func transform(transforms: ArrayTrie<Transform>) throws -> Self {
+        let values = transforms.getValuesOneLevelDeep()
+        var delta = 0
+        for value in values {
+            switch value {
+                case .delete: delta -= 1
+                case .insert(_): delta += 1
+                default: continue
+            }
+        }
+        var newChildren = [Character: ChildType]()
+        let allChildChars = Set().union(transforms.getAllChildCharacters()).union(properties().map { $0.first! })
+        for childChar in allChildChars {
+            if let existingChild = children[childChar] {
+                if let traversal = transforms.traverseChild(childChar) {
+                    if let traversedChild = try existingChild.transform(transforms: traversal) {
+                        newChildren[childChar] = traversedChild
+                    }
+                    else {
+                        newChildren.removeValue(forKey: childChar)
+                    }
+                }
+                else {
+                    newChildren[childChar] = existingChild
+                }
+            }
+            else {
+                guard let traversal = transforms.traverseChild(childChar) else { throw TransformErrors.transformFailed }
+                if !traversal.isEmpty() {
+                    guard let newChild = try ChildType.NodeType.insertAll(childChar: childChar, transforms: traversal) else { throw TransformErrors.transformFailed }
+                    newChildren[childChar] = ChildType(node: newChild)
+                }
+            }
+        }
+        return Self(children: newChildren, count: count + delta)
+    }
     
     func get(key: String) throws -> ValueType? {
         guard let firstChar = key.first else { return nil }

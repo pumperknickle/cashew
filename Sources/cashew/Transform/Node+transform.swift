@@ -12,15 +12,17 @@ public extension Node {
     
     func transformAterUpdate(transforms: ArrayTrie<Transform>) throws -> Self? {
         var newProperties: [PathSegment: Address] = [:]
-
-        for property in properties() {
-            guard let address = get(property: property) else { throw TransformErrors.transformFailed }
-            if let newTransforms = transforms.traverse([property]) {
+        
+        let allChildKeys = Set<String>().union(transforms.getAllChildKeys()).union(properties())
+        
+        for childKey in allChildKeys {
+            guard let address = get(property: childKey) else { throw TransformErrors.transformFailed }
+            if let newTransforms = transforms.traverse([childKey]) {
                 guard let newAddress = try address.transform(transforms: newTransforms) else { throw TransformErrors.transformFailed }
-                newProperties[property] = newAddress
+                newProperties[childKey] = newAddress
             }
             else {
-                newProperties[property] = address
+                newProperties[childKey] = address
             }
         }
         
