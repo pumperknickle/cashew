@@ -190,7 +190,7 @@ public extension RadixNode {
             guard let childChar = newKey.first else { return value }
             guard let child = children[childChar] else { return nil }
             guard let childNode = child.node else { throw TransformErrors.missingData }
-            return childNode.value
+            return try childNode.get(key: newKey)
         }
         
         // Otherwise, no match

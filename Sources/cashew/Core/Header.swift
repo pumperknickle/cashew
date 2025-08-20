@@ -97,6 +97,6 @@ public extension Header {
     func transform(transforms: ArrayTrie<Transform>) throws -> Self? {
         guard let node = node else { throw DataErrors.nodeNotAvailable }
         guard let result = try node.transform(transforms: transforms) else { return nil }
-        return Self(node: node)
+        return Self(node: result)
     }
 }
