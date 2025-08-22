@@ -8,27 +8,11 @@ import Multihash
 
 @Suite("MerkleDictionary Resolve Tests")
 struct MerkleDictionaryResolveTests {
-    struct TestBaseStructure: Node {
+    struct TestBaseStructure: Scalar {
         let val: Int
         
         init(val: Int) {
             self.val = val
-        }
-        
-        func get(property: PathSegment) -> (any cashew.Address)? {
-            return nil
-        }
-        
-        func properties() -> Set<PathSegment> {
-            return Set()
-        }
-        
-        func set(property: PathSegment, to child: any cashew.Address) -> MerkleDictionaryResolveTests.TestBaseStructure {
-            return self
-        }
-        
-        func set(properties: [PathSegment : any cashew.Address]) -> MerkleDictionaryResolveTests.TestBaseStructure {
-            return self
         }
     }
     

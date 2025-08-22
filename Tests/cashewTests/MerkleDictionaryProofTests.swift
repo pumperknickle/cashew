@@ -6,10 +6,6 @@ import ArrayTrie
 
 @Suite("Merkle Dictionary Proof Tests")
 struct MerkleDictionaryProofTests {
-    
-    // MARK: - Test Fixtures
-    // Using TestStoreFetcher for all storage operations
-    
     // MARK: - Deletion Proof Tests
     
     @Test("MerkleDictionary deletion proof validates removal of existing key")

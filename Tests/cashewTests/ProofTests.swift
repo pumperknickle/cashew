@@ -6,10 +6,6 @@ import ArrayTrie
 
 @Suite("Sparse Merkle Proof Tests")
 struct ProofTests {
-    
-    // MARK: - Test Fixtures
-    // Using MerkleDictionaryImpl and TestStoreFetcher for all tests
-    
     // MARK: - SparseMerkleProof Enum Tests
     
     @Test("SparseMerkleProof enum has correct cases")

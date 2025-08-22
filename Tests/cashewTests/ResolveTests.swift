@@ -8,8 +8,6 @@ import Multihash
 
 @Suite("Resolve Functionality Tests")
 struct ResolveTests {
-    
-    
     // MARK: - Header Resolve Tests
     
     @Test("Header resolve with existing node - no fetching required")
