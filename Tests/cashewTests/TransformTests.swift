@@ -193,28 +193,3 @@ struct TransformTests {
     }
 }
 
-// Extension to existing MockNode to add transform functionality
-extension MockNode {
-    func transform(transforms: ArrayTrie<Transform>) throws -> Self? {
-        var newData = data
-        
-        // Handle direct single-level paths
-        for key in transforms.getAllChildCharacters() {
-            let pathKey = String(key)
-            if let directValue = transforms.get([pathKey]) {
-                switch directValue {
-                case .insert(let value):
-                    newData[pathKey] = value
-                case .update(let value):
-                    if data.keys.contains(pathKey) {
-                        newData[pathKey] = value
-                    }
-                case .delete:
-                    newData.removeValue(forKey: pathKey)
-                }
-            }
-        }
-        
-        return MockNode(id: id, data: newData)
-    }
-}

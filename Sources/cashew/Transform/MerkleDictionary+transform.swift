@@ -81,6 +81,10 @@ public extension MerkleDictionary {
         }
     }
     
+    func mutating(key: String, value: ValueType) throws -> Self {
+        return try mutating(key: ArraySlice(key), value: value)
+    }
+    
     func mutating(key: ArraySlice<Character>, value: ValueType) throws -> Self {
         guard let firstChar = key.first else { throw TransformErrors.invalidKey }
         if let existingChild = children[firstChar] {

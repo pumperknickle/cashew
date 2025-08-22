@@ -1,13 +1,13 @@
 {
-  "originHash" : "d8227b1368bc9f7a3f955fb4081cb7d178816f729accae6fdb00800c7b1fcc65",
+  "originHash" : "8f061a2e03e2314c7375c458876d83ea765dc91cf5eae0fcd41a9e2c8b27c29d",
   "pins" : [
     {
       "identity" : "arraytrie",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pumperknickle/ArrayTrie.git",
       "state" : {
-        "revision" : "a31692ae7402bf7b8adda5273d34fdc36bcb458c",
-        "version" : "0.1.4"
+        "revision" : "89d66b0b8c837f4597ef7b33bd92d19a67560d7b",
+        "version" : "0.1.5"
       }
     },
     {

@@ -34,8 +34,7 @@ public extension RadixNode {
         if comparison == 0 {
             guard let traversedChild = transforms.traverse(path: childPrefix) else { throw TransformErrors.transformFailed }
             if traversedChild.isEmpty() { throw TransformErrors.transformFailed }
-            let transform = traversedChild.get([""])
-            if let transform = transform {
+            if let transform = traversedChild.get([""]) {
                 switch transform {
                 case .update(let newValue):
                     let newChildren = try transformChildren(transforms: traversedChild)
@@ -294,36 +293,5 @@ public extension RadixNode {
         let newChildren = [pathRemainder.first!: existingChild, keyRemainder.first!: newChild]
         
         return Self(prefix: common, value: nil, children: newChildren)
-    }
-    
-    @inline(__always)
-    private func compareSlices(_ slice1: ArraySlice<Character>, _ slice2: ArraySlice<Character>) -> Int {
-        if (slice1.elementsEqual(slice2)) { return 0 }
-        if (slice1.starts(with: slice2)) { return 1 }
-        if (slice2.starts(with: slice1)) { return 2 }
-        else { return 3 }
-    }
-    
-    @inline(__always)
-    private func commonPrefixString(_ slice1: ArraySlice<Character>, _ slice2: ArraySlice<Character>) -> String {
-        return commonPrefix(slice1, slice2)
-    }
-    
-    private func commonPrefix(_ slice1: ArraySlice<Character>, _ slice2: ArraySlice<Character>) -> String {
-        // Optimize: Pre-allocate string capacity and avoid repeated memory allocations
-        let maxLength = min(slice1.count, slice2.count)
-        var result = ""
-        result.reserveCapacity(maxLength)
-        
-        let pairs = zip(slice1, slice2)
-        for (char1, char2) in pairs {
-            if char1 == char2 {
-                result.append(char1)
-            } else {
-                break
-            }
-        }
-        
-        return result
     }
 }
