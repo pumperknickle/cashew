@@ -20,16 +20,21 @@ public protocol Node: Codable, LosslessStringConvertible, Sendable {
     func proof(paths: ArrayTrie<SparseMerkleProof>, fetcher: Fetcher) async throws -> Self
 }
 
+private let sharedJSONDecoder = JSONDecoder()
+private let sharedJSONEncoder: JSONEncoder = {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return encoder
+}()
+
 public extension Node {
     init?(data: Data) {
-       guard let decoded = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+       guard let decoded = try? sharedJSONDecoder.decode(Self.self, from: data) else { return nil }
        self = decoded
     }
     
     func toData() -> Data? {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return try? encoder.encode(keepingOnlyLinks())
+        return try? sharedJSONEncoder.encode(keepingOnlyLinks())
     }
     
     init?(_ description: String) {
@@ -47,7 +52,7 @@ public extension Node {
     }
     
     func toFullData() -> Data? {
-        return try? JSONEncoder().encode(self)
+        return try? sharedJSONEncoder.encode(self)
     }
     
     func keepingOnlyLinks() -> Self {
