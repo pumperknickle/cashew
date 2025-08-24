@@ -2,8 +2,8 @@ import Foundation
 
 public protocol Scalar: Node { }
 
-extension Scalar {
-    public func get(property: String) -> (any Address)? {
+public extension Scalar {
+    func get(property: String) -> (any Address)? {
         return nil
     }
     
