@@ -4,21 +4,25 @@ import Multicodec
 public struct RadixHeaderImpl<Value>: RadixHeader where Value: Codable, Value: Sendable, Value: LosslessStringConvertible {
     public typealias NodeType = RadixNodeImpl<Value>
     
-    public var rawCID: String
-    public var node: NodeType?
+    public let rawCID: String
+    public let rawNode: Box<NodeType>?
+    
+    public var node: NodeType? {
+        return rawNode?.boxed
+    }
     
     public init(rawCID: String, node: NodeType?) {
         self.rawCID = rawCID
-        self.node = node
+        self.rawNode = node == nil ? nil : Box(node!)
     }
     
     public init(node: NodeType) {
-        self.node = node
+        self.rawNode = Box(node)
         self.rawCID = Self.createSyncCID(for: node, codec: Self.defaultCodec)
     }
     
     public init(node: NodeType, codec: Codecs) {
-        self.node = node
+        self.rawNode = Box(node)
         self.rawCID = Self.createSyncCID(for: node, codec: codec)
     }
 }
@@ -38,6 +42,6 @@ extension RadixHeaderImpl: Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         rawCID = try container.decode(String.self, forKey: .rawCID)
-        node = try container.decodeIfPresent(NodeType.self, forKey: .node)
-    }
+        let nodeValue = try container.decodeIfPresent(NodeType.self, forKey: .node)
+        rawNode = nodeValue.map { Box($0) }    }
 }
