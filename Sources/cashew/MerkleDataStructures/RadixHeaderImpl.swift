@@ -30,18 +30,17 @@ public struct RadixHeaderImpl<Value>: RadixHeader where Value: Codable, Value: S
 // MARK: - Codable
 extension RadixHeaderImpl: Codable {
     enum CodingKeys: String, CodingKey {
-        case rawCID, node
+        case rawCID
     }
     
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(rawCID, forKey: .rawCID)
-        try container.encodeIfPresent(node, forKey: .node)
     }
     
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         rawCID = try container.decode(String.self, forKey: .rawCID)
-        let nodeValue = try container.decodeIfPresent(NodeType.self, forKey: .node)
-        rawNode = nodeValue.map { Box($0) }    }
+        rawNode = nil
+    }
 }

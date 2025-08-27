@@ -14,7 +14,6 @@ public protocol Node: Codable, LosslessStringConvertible, Sendable {
     func set(properties: [PathSegment: Address]) -> Self
     
     func resolve(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self
-    func keepingOnlyLinks() -> Self
     func storeRecursively(storer: Storer) throws
     func transform(transforms: ArrayTrie<Transform>) throws -> Self?
     func proof(paths: ArrayTrie<SparseMerkleProof>, fetcher: Fetcher) async throws -> Self
@@ -34,7 +33,7 @@ public extension Node {
     }
     
     func toData() -> Data? {
-        return try? sharedJSONEncoder.encode(keepingOnlyLinks())
+        return try? sharedJSONEncoder.encode(self)
     }
     
     init?(_ description: String) {
@@ -45,22 +44,6 @@ public extension Node {
     
     var description: String {
         return String(decoding: toData()!, as: UTF8.self)
-    }
-    
-    func getFullString() -> String {
-        return String(decoding: toFullData()!, as: UTF8.self)
-    }
-    
-    func toFullData() -> Data? {
-        return try? sharedJSONEncoder.encode(self)
-    }
-    
-    func keepingOnlyLinks() -> Self {
-        var newProperties = [String: Address]()
-        for property in properties() {
-            newProperties[property] = get(property: property)!.removingNode()
-        }
-        return set(properties: newProperties)
     }
 }
 

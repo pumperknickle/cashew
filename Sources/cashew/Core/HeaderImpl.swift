@@ -34,19 +34,16 @@ extension HeaderImpl: Codable where NodeType: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(rawCID, forKey: .rawCID)
-        try container.encodeIfPresent(rawNode?.boxed, forKey: .node)
     }
     
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         rawCID = try container.decode(String.self, forKey: .rawCID)
-        let nodeValue = try container.decodeIfPresent(NodeType.self, forKey: .node)
-        rawNode = nodeValue.map { Box($0) }
+        rawNode = nil
     }
     
     private enum CodingKeys: String, CodingKey {
         case rawCID
-        case node
     }
 }
 
