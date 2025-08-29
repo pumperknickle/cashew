@@ -1,7 +1,7 @@
 import ArrayTrie
 
 public extension MerkleDictionary {
-    func transform(transforms: ArrayTrie<Transform>) throws -> Self {
+    func transform(transforms: ArrayTrie<Transform>) throws -> Self? {
         let values = transforms.getValuesOneLevelDeep()
         var delta = 0
         for value in values {

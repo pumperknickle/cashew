@@ -46,7 +46,7 @@ struct NestedMerkleDictionaryTransformTests {
         transforms.set(["preferences.layout"], value: .insert("sidebar"))
         transforms.set(["preferences.density"], value: .insert("compact"))
         
-        let result = try userDict.transform(transforms: transforms)
+        let result = try userDict.transform(transforms: transforms)!
         
         print("\n=== After Transform ===")
         print("Dict count: \(result.count)")
@@ -144,7 +144,7 @@ struct NestedMerkleDictionaryTransformTests {
         transforms.set(["logs.error.count"], value: .update("3"))
         transforms.set(["logs.debug.count"], value: .insert("25"))
         
-        let result = try systemDict.transform(transforms: transforms)
+        let result = try systemDict.transform(transforms: transforms)!
         
         // Cross-verify with manual operations
         let manual = try systemDict
@@ -247,7 +247,7 @@ struct NestedMerkleDictionaryTransformTests {
         transforms.set(["user_session_timeout"], value: .update("60min"))
         transforms.set(["user_last_activity"], value: .insert("2024-01-20T15:30:00Z"))
         
-        let result = try hierarchicalDict.transform(transforms: transforms)
+        let result = try hierarchicalDict.transform(transforms: transforms)!
         
         // Manual verification
         let manual = try hierarchicalDict
@@ -361,7 +361,7 @@ struct NestedMerkleDictionaryTransformTests {
         transforms.set(["metrics.hour12.requests"], value: .insert("380"))
         transforms.set(["metrics.hour12.errors"], value: .insert("1"))
         
-        let result = try dict.transform(transforms: transforms)
+        let result = try dict.transform(transforms: transforms)!
         
         print("Final bulk dict count: \(result.count)")
         #expect(result.count == 92) // 100 original - 12 deleted users + 4 new metrics (no subtraction for updates)

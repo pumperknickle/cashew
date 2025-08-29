@@ -81,7 +81,7 @@ struct TransformTests {
         var transforms = ArrayTrie<Transform>()
         transforms.set(["newkey"], value: .insert("newvalue"))
         
-        let result = try dict.transform(transforms: transforms)
+        let result = try dict.transform(transforms: transforms)!
         
         #expect(result.count == 1)
         #expect(try result.get(key: "newkey") == "newvalue")
@@ -95,7 +95,7 @@ struct TransformTests {
         var transforms = ArrayTrie<Transform>()
         transforms.set(["keyToDelete"], value: .delete)
         
-        let result = try dict.transform(transforms: transforms)
+        let result = try dict.transform(transforms: transforms)!
         
         #expect(result.count == 0)
         #expect(try result.get(key: "keyToDelete") == nil)
@@ -109,7 +109,7 @@ struct TransformTests {
         var transforms = ArrayTrie<Transform>()
         transforms.set(["keyToUpdate"], value: .update("newValue"))
         
-        let result = try dict.transform(transforms: transforms)
+        let result = try dict.transform(transforms: transforms)!
         
         #expect(result.count == 1)
         #expect(try result.get(key: "keyToUpdate") == "newValue")
@@ -122,7 +122,7 @@ struct TransformTests {
         // ArrayTrie transform
         var transforms = ArrayTrie<Transform>()
         transforms.set(["key1"], value: .insert("value1"))
-        let transformResult = try dict.transform(transforms: transforms)
+        let transformResult = try dict.transform(transforms: transforms)!
         
         // Manual operation
         let manualResult = try dict.inserting(key: "key1", value: "value1")
@@ -143,7 +143,7 @@ struct TransformTests {
         // ArrayTrie transform
         var transforms = ArrayTrie<Transform>()
         transforms.set(["key1"], value: .delete)
-        let transformResult = try dict.transform(transforms: transforms)
+        let transformResult = try dict.transform(transforms: transforms)!
         
         // Manual operation
         let manualResult = try dict.deleting(key: "key1")
@@ -166,7 +166,7 @@ struct TransformTests {
         // ArrayTrie transform
         var transforms = ArrayTrie<Transform>()
         transforms.set(["key1"], value: .update("newValue"))
-        let transformResult = try dict.transform(transforms: transforms)
+        let transformResult = try dict.transform(transforms: transforms)!
         
         // Manual operation
         let manualResult = try dict.mutating(key: ArraySlice("key1"), value: "newValue")
@@ -184,7 +184,7 @@ struct TransformTests {
             .inserting(key: "key1", value: "value1")
         
         let emptyTransforms = ArrayTrie<Transform>()
-        let result = try dict.transform(transforms: emptyTransforms)
+        let result = try dict.transform(transforms: emptyTransforms)!
         
         #expect(result.count == dict.count)
         let resultValue = try result.get(key: "key1")

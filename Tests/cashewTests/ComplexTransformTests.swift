@@ -49,7 +49,7 @@ struct ComplexTransformTests {
         transforms.set(["country"], value: .delete)
         transforms.set(["lastReview"], value: .delete)
         
-        let result = try dict.transform(transforms: transforms)
+        let result = try dict.transform(transforms: transforms)!
         
         // Cross-verify with manual operations
         let manualResult = try dict
@@ -118,7 +118,7 @@ struct ComplexTransformTests {
         step1Transforms.set(["startedAt"], value: .insert("2024-01-10T14:30:00Z"))
         step1Transforms.set(["estimatedCompletion"], value: .insert("2024-01-12T17:00:00Z"))
         
-        let afterStep1 = try initialState.transform(transforms: step1Transforms)
+        let afterStep1 = try initialState.transform(transforms: step1Transforms)!
         
         // Step 2: Add progress updates
         var step2Transforms = ArrayTrie<Transform>()
@@ -127,7 +127,7 @@ struct ComplexTransformTests {
         step2Transforms.set(["notes"], value: .insert("Initial analysis completed"))
         step2Transforms.set(["estimatedCompletion"], value: .update("2024-01-13T12:00:00Z")) // Revised estimate
         
-        let afterStep2 = try afterStep1.transform(transforms: step2Transforms)
+        let afterStep2 = try afterStep1.transform(transforms: step2Transforms)!
         
         // Step 3: Complete the work
         var step3Transforms = ArrayTrie<Transform>()
@@ -138,7 +138,7 @@ struct ComplexTransformTests {
         step3Transforms.set(["notes"], value: .update("Work completed successfully"))
         step3Transforms.set(["estimatedCompletion"], value: .delete) // No longer needed
         
-        let finalState = try afterStep2.transform(transforms: step3Transforms)
+        let finalState = try afterStep2.transform(transforms: step3Transforms)!
         
         // Cross-verify with equivalent manual operations
         let manualResult = try initialState
@@ -223,7 +223,7 @@ struct ComplexTransformTests {
         transforms.set(["version"], value: .update("2.0"))
         transforms.set(["lastModified"], value: .insert("2024-01-15"))
         
-        let result = try dict.transform(transforms: transforms)
+        let result = try dict.transform(transforms: transforms)!
         
         // Verify systematic updates
         #expect(try result.get(key: "item1") == "updatedValueA1")
@@ -283,7 +283,7 @@ struct ComplexTransformTests {
         transforms.set(["tabsAndNewlines"], value: .insert("col1\tcol2\tcol3\nrow1\tdata1\tdata2"))
         transforms.set(["veryLongText"], value: .insert(String(repeating: "Lorem ipsum ", count: 100)))
         
-        let result = try dict.transform(transforms: transforms)
+        let result = try dict.transform(transforms: transforms)!
         
         // Cross-verify with manual operations
         let manualResult = try dict
@@ -353,7 +353,7 @@ struct ComplexTransformTests {
         transforms.set(["key5"], value: .insert("new5"))
         transforms.set(["key6"], value: .insert("new6"))
         
-        let result = try dict.transform(transforms: transforms)
+        let result = try dict.transform(transforms: transforms)!
         
         // Verify ArrayTrie conflict resolution behavior
         #expect(try result.get(key: "key1") == "final_update")
