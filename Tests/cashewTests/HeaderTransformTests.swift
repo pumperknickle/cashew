@@ -29,7 +29,7 @@ struct HeaderTransformTests {
         #expect(try dictResult.get(key: "newkey") == "newvalue")
         
         // Now test header transform with ArrayTrie
-        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try header.transform(transforms: trieTransforms)
+        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try header.transform(transforms: trieTransforms)!
         #expect(try trieResult.node?.get(key: "newkey") == "newvalue")
         
         // Test dictionary interface
@@ -37,7 +37,7 @@ struct HeaderTransformTests {
             ["newkey"]: .insert("newvalue")
         ]
         let result = try header.transform(transforms: transforms)
-        #expect(try result.node?.get(key: "newkey") == "newvalue")
+        #expect(try result?.node?.get(key: "newkey") == "newvalue")
     }
     
     @Test("Dictionary interface - single insert transform")
@@ -50,7 +50,7 @@ struct HeaderTransformTests {
             ["newkey"]: .insert("newvalue")
         ]
         
-        let result = try header.transform(transforms: transforms)
+        let result = try header.transform(transforms: transforms)!
         #expect(try result.node?.get(key: "newkey") == "newvalue")
         #expect(try result.node?.get(key: "existing") == "value")
         #expect(result.node?.count == 2)
@@ -66,7 +66,7 @@ struct HeaderTransformTests {
             ["existing"]: .update("newvalue")
         ]
         
-        let result = try header.transform(transforms: transforms)
+        let result = try header.transform(transforms: transforms)!
         #expect(try result.node?.get(key: "existing") == "newvalue")
         #expect(result.node?.count == 1)
     }
@@ -82,7 +82,7 @@ struct HeaderTransformTests {
             ["toDelete"]: .delete
         ]
         
-        let result = try header.transform(transforms: transforms)
+        let result = try header.transform(transforms: transforms)!
         #expect(try result.node?.get(key: "toDelete") == nil)
         #expect(try result.node?.get(key: "toKeep") == "keepValue")
         #expect(result.node?.count == 1)
@@ -101,7 +101,7 @@ struct HeaderTransformTests {
             ["insert"]: .insert("insertvalue")
         ]
         
-        let result = try header.transform(transforms: transforms)
+        let result = try header.transform(transforms: transforms)!
         #expect(try result.node?.get(key: "update") == "newvalue")
         #expect(try result.node?.get(key: "delete") == nil)
         #expect(try result.node?.get(key: "insert") == "insertvalue")
@@ -117,7 +117,7 @@ struct HeaderTransformTests {
         
         let transforms: [[String]: Transform] = [:]
         
-        let result = try header.transform(transforms: transforms)
+        let result = try header.transform(transforms: transforms)!
         #expect(try result.node?.get(key: "key1") == "value1")
         #expect(try result.node?.get(key: "key2") == "value2")
         #expect(result.node?.count == 2)
@@ -170,12 +170,12 @@ struct HeaderTransformTests {
         let dictTransforms: [[String]: Transform] = [
             ["newkey"]: .insert("newvalue")
         ]
-        let dictResult = try headerForDict.transform(transforms: dictTransforms)
+        let dictResult = try headerForDict.transform(transforms: dictTransforms)!
         
         // ArrayTrie interface
         var trieTransforms = ArrayTrie<Transform>()
         trieTransforms.set(["newkey"], value: .insert("newvalue"))
-        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try headerForTrie.transform(transforms: trieTransforms)
+        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try headerForTrie.transform(transforms: trieTransforms)!
         
         let dictNewKey = try dictResult.node?.get(key: "newkey")
         let trieNewKey = try trieResult.node?.get(key: "newkey")
@@ -198,12 +198,12 @@ struct HeaderTransformTests {
         let dictTransforms: [[String]: Transform] = [
             ["update"]: .update("newvalue")
         ]
-        let dictResult = try headerForDict.transform(transforms: dictTransforms)
+        let dictResult = try headerForDict.transform(transforms: dictTransforms)!
         
         // ArrayTrie interface
         var trieTransforms = ArrayTrie<Transform>()
         trieTransforms.set(["update"], value: .update("newvalue"))
-        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try headerForTrie.transform(transforms: trieTransforms)
+        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try headerForTrie.transform(transforms: trieTransforms)!
         
         let dictUpdate = try dictResult.node?.get(key: "update")
         let trieUpdate = try trieResult.node?.get(key: "update")
@@ -224,12 +224,12 @@ struct HeaderTransformTests {
         let dictTransforms: [[String]: Transform] = [
             ["delete"]: .delete
         ]
-        let dictResult = try headerForDict.transform(transforms: dictTransforms)
+        let dictResult = try headerForDict.transform(transforms: dictTransforms)!
         
         // ArrayTrie interface
         var trieTransforms = ArrayTrie<Transform>()
         trieTransforms.set(["delete"], value: .delete)
-        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try headerForTrie.transform(transforms: trieTransforms)
+        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try headerForTrie.transform(transforms: trieTransforms)!
         
         let dictDelete = try dictResult.node?.get(key: "delete")
         let trieDelete = try trieResult.node?.get(key: "delete")
@@ -256,14 +256,14 @@ struct HeaderTransformTests {
             ["delete"]: .delete,
             ["insert"]: .insert("insertvalue")
         ]
-        let dictResult = try headerForDict.transform(transforms: dictTransforms)
+        let dictResult = try headerForDict.transform(transforms: dictTransforms)!
         
         // ArrayTrie interface
         var trieTransforms = ArrayTrie<Transform>()
         trieTransforms.set(["update"], value: .update("newvalue"))
         trieTransforms.set(["delete"], value: .delete)
         trieTransforms.set(["insert"], value: .insert("insertvalue"))
-        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try headerForTrie.transform(transforms: trieTransforms)
+        let trieResult: HeaderImpl<MerkleDictionaryImpl<String>> = try headerForTrie.transform(transforms: trieTransforms)!
         
         let dictUpdate = try dictResult.node?.get(key: "update")
         let trieUpdate = try trieResult.node?.get(key: "update")
@@ -301,7 +301,7 @@ struct HeaderTransformTests {
         let header = HeaderImpl(node: dictionary)
         
         let emptyTransforms = ArrayTrie<Transform>()
-        let result: HeaderImpl<MerkleDictionaryImpl<String>> = try header.transform(transforms: emptyTransforms)
+        let result: HeaderImpl<MerkleDictionaryImpl<String>> = try header.transform(transforms: emptyTransforms)!
         
         #expect(try result.node?.get(key: "key1") == "value1")
         #expect(result.node?.count == 1)
@@ -318,7 +318,7 @@ struct HeaderTransformTests {
             ["count"]: .insert("42")
         ]
         
-        let result = try header.transform(transforms: transforms)
+        let result = try header.transform(transforms: transforms)!
         #expect(try result.node?.get(key: "count") == 42)
         #expect(result.node?.count == 1)
     }
@@ -333,7 +333,7 @@ struct HeaderTransformTests {
             ["counter"]: .update("200")
         ]
         
-        let result = try header.transform(transforms: transforms)
+        let result = try header.transform(transforms: transforms)!
         #expect(try result.node?.get(key: "counter") == 200)
         #expect(result.node?.count == 1)
     }
@@ -349,7 +349,7 @@ struct HeaderTransformTests {
             ["toDelete"]: .delete
         ]
         
-        let result = try header.transform(transforms: transforms)
+        let result = try header.transform(transforms: transforms)!
         #expect(try result.node?.get(key: "toDelete") == nil)
         #expect(try result.node?.get(key: "toKeep") == 456)
         #expect(result.node?.count == 1)
@@ -368,7 +368,7 @@ struct HeaderTransformTests {
             ["insert"]: .insert("40")
         ]
         
-        let result = try header.transform(transforms: transforms)
+        let result = try header.transform(transforms: transforms)!
         #expect(try result.node?.get(key: "update") == 30)
         #expect(try result.node?.get(key: "delete") == nil)
         #expect(try result.node?.get(key: "insert") == 40)

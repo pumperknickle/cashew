@@ -33,7 +33,6 @@ public extension RadixNode {
         let comparison = compareSlices(childPrefixSlice, prefixSlice)
         if comparison == 0 {
             guard let traversedChild = transforms.traverse(path: childPrefix) else { throw TransformErrors.transformFailed }
-            if traversedChild.isEmpty() { throw TransformErrors.transformFailed }
             if let transform = traversedChild.get([""]) {
                 switch transform {
                 case .update(let newValue):
@@ -54,8 +53,31 @@ public extension RadixNode {
                     throw TransformErrors.transformFailed
                 }
             }
-            let newChildren = try transformChildren(transforms: traversedChild)
+            let newChildren = traversedChild.isEmpty() ? children : try transformChildren(transforms: traversedChild)
             if value != nil {
+                if let traversedNext = transforms.traverse([childPrefix]) {
+                    if !traversedNext.isEmpty() {
+                        if let value = value as? Address {
+                            if let newValue = try value.transform(transforms: traversedNext) {
+                                if let newValue = newValue as? ValueType {
+                                    return Self(prefix: prefix, value: newValue, children: newChildren)
+                                }
+                                else {
+                                    throw TransformErrors.transformFailed
+                                }
+                            }
+                            if newChildren.count == 0 {
+                                return nil
+                            }
+                            if newChildren.count == 1 {
+                                guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                                return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
+                            }
+                            return Self(prefix: prefix, value: nil, children: newChildren)
+                        }
+                        else { throw TransformErrors.invalidKey }
+                    }
+                }
                 return Self(prefix: prefix, value: value, children: newChildren)
             }
             if newChildren.count == 0 {

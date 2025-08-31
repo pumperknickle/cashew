@@ -32,6 +32,44 @@ struct MerkleDictionaryProofTests {
         #expect(try resultAfterDeletion.get(key: "test") == nil)
     }
     
+    @Test("MerkleDictionary proof succeeds for non-existence value")
+    func testMerkleDictionaryProofSucceedsForNonExistenceValue() async throws {
+        typealias BaseDictionary = MerkleDictionaryImpl<UInt64>
+        typealias HigherDictionaryType = MerkleDictionaryImpl<HeaderImpl<BaseDictionary>>
+        
+        let baseDictionary: BaseDictionary =
+        try MerkleDictionaryImpl<UInt64>(children: [:], count: 0)
+            .inserting(key: "Hello", value: 1)
+            .inserting(key: "World", value: 2)
+        
+        let baseDictionaryHeader = HeaderImpl<BaseDictionary>(node: baseDictionary)
+        
+        let higherDictionary: HigherDictionaryType = try HigherDictionaryType(children: [:], count: 0).inserting(key: "Foo", value: baseDictionaryHeader)
+        
+        var proofs = ArrayTrie<SparseMerkleProof>()
+        proofs.set(["Bar", "Hello"], value: .insertion)
+        proofs.set(["Foo", "Helli"], value: .insertion)
+        
+        let higherDictionaryHeader = HeaderImpl<HigherDictionaryType>(node: higherDictionary)
+        
+        let fetcher = TestStoreFetcher()
+        try! higherDictionaryHeader.storeRecursively(storer: fetcher)
+
+        let emptyHigherDictionaryHeader = HeaderImpl<HigherDictionaryType>(rawCID: higherDictionaryHeader.rawCID)
+        
+        let proofOfInsertion = try await emptyHigherDictionaryHeader.proof(paths: proofs, fetcher: fetcher)
+        #expect(proofOfInsertion.node != nil)
+        
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["Bar"], value: .insert(baseDictionaryHeader.rawCID))
+        transforms.set(["Foo", "Helli"], value: .insert("3"))
+        
+        let resolvedHeader = try await emptyHigherDictionaryHeader.resolveRecursive(fetcher: fetcher)
+        let transformed = try resolvedHeader.transform(transforms: transforms)!
+        #expect(try transformed.node?.get(key: "Foo")?.node?.get(key: "Helli") == 3)
+        #expect(try transformed.node?.get(key: "Bar")?.rawCID == baseDictionaryHeader.rawCID)
+    }
+    
     @Test("MerkleDictionary deletion proof fails for non-existing key")
     func testMerkleDictionaryDeletionProofFailsForNonExisting() async throws {
         // Create dictionary with one key

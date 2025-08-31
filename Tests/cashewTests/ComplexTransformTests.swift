@@ -101,6 +101,36 @@ struct ComplexTransformTests {
         #expect(result.count == 15) // 12 original - 2 deleted + 5 inserted
     }
     
+    @Test("Test inserting into MerkleDictionary with value of Header Type")
+    func testInsertingIntoMerkleDictionaryWithValueOfHeaderType() async throws {
+        typealias BaseDictionary = MerkleDictionaryImpl<UInt64>
+        typealias HigherDictionaryType = MerkleDictionaryImpl<HeaderImpl<BaseDictionary>>
+        
+        let baseDictionary: BaseDictionary =
+        try MerkleDictionaryImpl<UInt64>(children: [:], count: 0)
+            .inserting(key: "Hello", value: 1)
+            .inserting(key: "World", value: 2)
+        
+        let baseDictionaryHeader = HeaderImpl<BaseDictionary>(node: baseDictionary)
+        let fetcher = TestStoreFetcher()
+        try! baseDictionaryHeader.storeRecursively(storer: fetcher)
+        
+        let higherDictionary: HigherDictionaryType = HigherDictionaryType(children: [:], count: 0)
+        
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["Foo"], value: .insert(baseDictionaryHeader.rawCID))
+        
+        let transformedDictionary = try! higherDictionary.transform(transforms: transforms)
+        
+        #expect(try! transformedDictionary!.get(key: "Foo")!.node == nil)
+        
+        let finalDictionary = try await transformedDictionary!.resolveRecursive(fetcher: fetcher)
+        
+        #expect(try! finalDictionary.get(key: "Foo")!.node!.count == 2)
+        #expect(try! finalDictionary.get(key: "Foo")!.node!.get(key: "Hello") == 1)
+        #expect(try! finalDictionary.get(key: "Foo")!.node!.get(key: "World") == 2)
+    }
+    
     @Test("Sequential state machine-like transforms")
     func testSequentialStateMachineTransforms() throws {
         // Simulate a state machine workflow
