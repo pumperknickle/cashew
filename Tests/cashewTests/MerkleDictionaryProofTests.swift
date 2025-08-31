@@ -154,6 +154,24 @@ struct MerkleDictionaryProofTests {
         }
     }
     
+    @Test("MerkleDictionary mutation proof fails for non-existing key")
+    func testMerkleDictionaryMutationProofFailsForNonExistingKeysAlongPath() async throws {
+        var dictionary = MerkleDictionaryImpl<String>(children: [:], count: 0)
+        dictionary = try dictionary.inserting(key: "existing-key", value: "value")
+        let dictHeader = HeaderImpl(node: dictionary)
+        
+        let header = HeaderImpl<MerkleDictionaryImpl<String>>(rawCID: dictHeader.rawCID)
+        let fetcher = TestStoreFetcher()
+        try dictHeader.storeRecursively(storer: fetcher)
+        
+        var paths = ArrayTrie<SparseMerkleProof>()
+        paths.set(["existing"], value: .mutation)
+        
+        await #expect(throws: ProofErrors.self) {
+            _ = try await header.proof(paths: paths, fetcher: fetcher)
+        }
+    }
+    
     @Test("MerkleDictionary insertion proof with complex radix splitting")
     func testMerkleDictionaryInsertionProofRadixSplit() async throws {
         // Create a radix node that will need to split when inserting
@@ -215,7 +233,7 @@ struct MerkleDictionaryProofTests {
         try dictHeader.storeRecursively(storer: fetcher)
         
         var paths = ArrayTrie<SparseMerkleProof>()
-        paths.set(["n", "non-existing"], value: .mutation)
+        paths.set(["non-existing"], value: .mutation)
         
         await #expect(throws: ProofErrors.self) {
             _ = try await header.proof(paths: paths, fetcher: fetcher)

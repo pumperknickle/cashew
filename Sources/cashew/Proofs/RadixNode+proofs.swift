@@ -7,6 +7,8 @@ public extension RadixNode {
             if values.contains(.deletion) || values.contains(.mutation) { throw ProofErrors.invalidProofType }
             return self
         }
+        let values = Set(paths.getValuesOfKeysThatDontStartWith(key: prefix))
+        if values.contains(.deletion) || values.contains(.mutation) { throw ProofErrors.invalidProofType }
         guard let proofAtNode = traversedPrefix.get([""]) else {
             return try await proofForChildren(paths: traversedPrefix, fetcher: fetcher)
         }
