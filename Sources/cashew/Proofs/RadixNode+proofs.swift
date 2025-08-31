@@ -3,12 +3,7 @@ import ArrayTrie
 public extension RadixNode {
     func proof(paths: ArrayTrie<SparseMerkleProof>, fetcher: Fetcher) async throws -> Self {
         guard let traversedPrefix = paths.traverse(path: prefix) else {
-            let values = Set(paths.getValuesOfKeysThatDontStartWith(key: prefix))
-            if values.contains(.deletion) || values.contains(.mutation) { throw ProofErrors.invalidProofType }
-            return self
-        }
-        if traversedPrefix.isEmpty() {
-            let values = Set(paths.getValuesOfKeysThatDontStartWith(key: prefix))
+            let values = paths.getAllValues()
             if values.contains(.deletion) || values.contains(.mutation) { throw ProofErrors.invalidProofType }
             return self
         }

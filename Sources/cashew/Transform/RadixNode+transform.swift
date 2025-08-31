@@ -40,6 +40,7 @@ public extension RadixNode {
                     guard let newValue = ValueType(newValue) else { throw TransformErrors.transformFailed }
                     return Self(prefix: prefix, value: newValue, children: newChildren)
                 case .delete:
+                    if value == nil { throw TransformErrors.transformFailed }
                     let newChildren = try transformChildren(transforms: traversedChild)
                     if newChildren.count == 0 {
                         return nil
@@ -49,8 +50,10 @@ public extension RadixNode {
                         return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
                     }
                     return Self(prefix: prefix, value: nil, children: newChildren)
-                default:
-                    throw TransformErrors.transformFailed
+                case .insert(let newValue):
+                    if value != nil { throw TransformErrors.transformFailed }
+                    guard let newValue = ValueType(newValue) else { throw TransformErrors.transformFailed }
+                    return Self(prefix: prefix, value: newValue, children: children)
                 }
             }
             let newChildren = traversedChild.isEmpty() ? children : try transformChildren(transforms: traversedChild)

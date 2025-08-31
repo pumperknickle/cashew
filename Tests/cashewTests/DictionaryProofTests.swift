@@ -154,7 +154,8 @@ struct DictionaryProofTests {
         paths.set(["t", "test"], value: .mutation)
         
         await #expect(throws: ProofErrors.self) {
-            _ = try await header.proof(paths: paths, fetcher: fetcher)
+            let header = try await header.proof(paths: paths, fetcher: fetcher)
+            print(header)
         }
     }
     
