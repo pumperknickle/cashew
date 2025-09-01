@@ -1,16 +1,28 @@
 @testable import cashew
 import Foundation
 
-class TestStoreFetcher: Storer, Fetcher {
-    var storage: [String: Data] = [:]
+class TestStoreFetcher: Storer, Fetcher, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String: Data] = [:]
     
     func store(rawCid: String, data: Data) {
-        storage[rawCid] = data
+        lock.withLock {
+            storage[rawCid] = data
+        }
     }
     
     func fetch(rawCid: String) async throws -> Data {
-        guard let data = storage[rawCid] else { throw FetchError.notFound }
+        let data = lock.withLock {
+            storage[rawCid]
+        }
+        guard let data = data else { throw FetchError.notFound }
         return data
+    }
+    
+    func storeRaw(rawCid: String, data: Data) {
+        lock.withLock {
+            storage[rawCid] = data
+        }
     }
 }
 

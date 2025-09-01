@@ -254,7 +254,7 @@ struct ResolveTests {
         let header = HeaderImpl<MerkleDictionaryImpl<String>>(rawCID: cid)
         
         // Create a fetcher that throws errors
-        class ErrorFetcher: Fetcher {
+        final class ErrorFetcher: Fetcher, Sendable {
             func fetch(rawCid: String) async throws -> Data {
                 throw NSError(domain: "TestError", code: 404, userInfo: [NSLocalizedDescriptionKey: "CID not found"])
             }
@@ -275,7 +275,7 @@ struct ResolveTests {
         // Create fetcher with invalid data that can't be decoded
         let fetcher = TestStoreFetcher()
         let invalidData = "invalid json".data(using: .utf8)!
-        fetcher.storage[cid] = invalidData
+        fetcher.storeRaw(rawCid: cid, data: invalidData)
         
         await #expect(throws: (any Error).self) {
             try await header.resolve(fetcher: fetcher)
