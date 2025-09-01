@@ -11,6 +11,10 @@ public protocol MerkleDictionary: Node {
 }
 
 public extension MerkleDictionary {
+    init() {
+        self.init(children: [:], count: 0)
+    }
+    
     func get(property: PathSegment) -> Address? {
         return children[Character(property)]
     }
