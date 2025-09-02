@@ -34,4 +34,56 @@ public extension MerkleDictionary {
     func set(properties: [Character: ChildType]) -> Self {
         return Self(children: properties, count: count)
     }
+    
+    func allKeys() throws -> Set<String> {
+        var keys = Set<String>()
+        
+        for (_, child) in children {
+            guard let node = child.node else { throw DataErrors.nodeNotAvailable }
+            try collectKeys(from: node, currentPath: "", into: &keys)
+        }
+        
+        return keys
+    }
+    
+    func allKeysAndValues() throws -> [String: ValueType] {
+        var keysAndValues = [String: ValueType]()
+        
+        for (_, child) in children {
+            guard let node = child.node else { throw DataErrors.nodeNotAvailable }
+            try collectKeysAndValues(from: node, currentPath: "", into: &keysAndValues)
+        }
+        
+        return keysAndValues
+    }
+    
+    private func collectKeys(from node: ChildType.NodeType, currentPath: String, into keys: inout Set<String>) throws {
+        let fullPath = currentPath + node.prefix
+        
+        // If this node has a value, it represents a complete key
+        if node.value != nil {
+            keys.insert(fullPath)
+        }
+        
+        // Recursively traverse children
+        for (_, child) in node.children {
+            guard let childNode = child.node else { throw DataErrors.nodeNotAvailable }
+            try collectKeys(from: childNode, currentPath: fullPath, into: &keys)
+        }
+    }
+    
+    private func collectKeysAndValues(from node: ChildType.NodeType, currentPath: String, into keysAndValues: inout [String: ValueType]) throws {
+        let fullPath = currentPath + node.prefix
+        
+        // If this node has a value, it represents a complete key-value pair
+        if let value = node.value {
+            keysAndValues[fullPath] = value
+        }
+        
+        // Recursively traverse children
+        for (_, child) in node.children {
+            guard let childNode = child.node else { throw DataErrors.nodeNotAvailable }
+            try collectKeysAndValues(from: childNode, currentPath: fullPath, into: &keysAndValues)
+        }
+    }
 }
