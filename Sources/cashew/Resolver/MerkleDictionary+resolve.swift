@@ -52,6 +52,15 @@ public extension MerkleDictionary {
         return set(properties: await newProperties.allKeyValuePairs())
     }
     
+    func resolveList(fetcher: Fetcher) async throws -> Self {
+        let newProperties = ThreadSafeDictionary<Character, ChildType>()
+
+        try await properties().concurrentForEach { property in
+            await newProperties.set(property.first!, value: try await children[property.first!]!.resolveList(paths: ArrayTrie(), fetcher: fetcher))
+        }
+        return await Self(children: newProperties.allKeyValuePairs(), count: count)
+    }
+    
     func resolve(fetcher: Fetcher) async throws -> Self {
         return self
     }

@@ -849,4 +849,57 @@ struct MerkleDictionaryResolveTests {
         #expect(try dictionary.get(key: "cherry")?.node?.val == 444)
     }
 
+    @Test("MerkleDictionary resolveList method")
+    func testMerkleDictionaryResolveListMethod() async throws {
+        typealias BaseDictionaryType = MerkleDictionaryImpl<HeaderImpl<TestBaseStructure>>
+        
+        let baseStructure1 = TestBaseStructure(val: 1)
+        let baseStructure2 = TestBaseStructure(val: 2)
+        let baseStructure3 = TestBaseStructure(val: 3)
+        let baseHeader1 = HeaderImpl(node: baseStructure1)
+        let baseHeader2 = HeaderImpl(node: baseStructure2)
+        let baseHeader3 = HeaderImpl(node: baseStructure3)
+        
+        // Create dictionary using inserting operations
+        let emptyDictionary = BaseDictionaryType(children: [:], count: 0)
+        let dictionary = try emptyDictionary
+            .inserting(key: "Alpha", value: baseHeader1)
+            .inserting(key: "Beta", value: baseHeader2)
+            .inserting(key: "Gamma", value: baseHeader3)
+        let dictionaryHeader = HeaderImpl(node: dictionary)
+        
+        let testStoreFetcher = TestStoreFetcher()
+        try dictionaryHeader.storeRecursively(storer: testStoreFetcher)
+        
+        // Create a new header from CID to test resolveList method
+        let newDictionaryHeader = HeaderImpl<BaseDictionaryType>(rawCID: dictionaryHeader.rawCID)
+        let resolvedDictionaryNode = try await newDictionaryHeader.resolve(fetcher: testStoreFetcher).node!.resolveList(fetcher: testStoreFetcher)
+        let resolvedDictionary = HeaderImpl<BaseDictionaryType>(node: resolvedDictionaryNode)
+        
+        #expect(resolvedDictionary.node != nil)
+        #expect(resolvedDictionary.node!.count == 3)
+        
+        // resolveList should resolve all keys and values in the dictionary
+        // but not resolve the values further than the header
+        let alphaValue = try resolvedDictionary.node!.get(key: "Alpha")
+        let betaValue = try resolvedDictionary.node!.get(key: "Beta")
+        let gammaValue = try resolvedDictionary.node!.get(key: "Gamma")
+        
+        #expect(alphaValue != nil)
+        #expect(alphaValue!.node == nil) // Header resolved but content not resolved further
+        #expect(betaValue != nil) 
+        #expect(betaValue!.node == nil) // Header resolved but content not resolved further
+        #expect(gammaValue != nil)
+        #expect(gammaValue!.node == nil) // Header resolved but content not resolved further
+        
+        // Verify the original dictionary has the correct resolved values
+        let originalAlphaValue = try dictionary.get(key: "Alpha")
+        let originalBetaValue = try dictionary.get(key: "Beta")
+        let originalGammaValue = try dictionary.get(key: "Gamma")
+        
+        #expect(originalAlphaValue?.node?.val == 1)
+        #expect(originalBetaValue?.node?.val == 2)
+        #expect(originalGammaValue?.node?.val == 3)
+    }
+
 }

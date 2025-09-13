@@ -83,7 +83,7 @@ public extension RadixNode {
     }
     
     func resolveList(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
-        return try await resolveRecursive(fetcher: fetcher)
+        return try await resolveList(paths: paths, nextPaths: ArrayTrie(), fetcher: fetcher)
     }
     
     func resolveList(paths: ArrayTrie<ResolutionStrategy>?, nextPaths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {

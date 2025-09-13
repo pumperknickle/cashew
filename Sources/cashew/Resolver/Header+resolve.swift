@@ -1,7 +1,6 @@
 import ArrayTrie
 
 public extension Header {
-    
     func resolve(paths: [[String]: ResolutionStrategy], fetcher: Fetcher) async throws -> Self {
         var pathTrie = ArrayTrie<ResolutionStrategy>()
         for (path, strategy) in paths {
