@@ -18,7 +18,7 @@ public extension Header {
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw DecodingError.decodeFromDataError }
+            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
             let resolvedNode = try await newNode.resolve(paths: paths, fetcher: fetcher)
             return Self(rawCID: rawCID, node: resolvedNode)
         }
@@ -31,7 +31,7 @@ public extension Header {
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw DecodingError.decodeFromDataError }
+            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
             let resolvedNode = try await newNode.resolveRecursive(fetcher: fetcher)
             return Self(rawCID: rawCID, node: resolvedNode)
         }
@@ -43,7 +43,7 @@ public extension Header {
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw DecodingError.decodeFromDataError }
+            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
             return Self(rawCID: rawCID, node: newNode)
         }
     }

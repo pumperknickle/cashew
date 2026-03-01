@@ -353,7 +353,7 @@ extension RadixNode where ValueType: Header, ValueType.NodeType: MerkleDictionar
                     return Self(prefix: prefix, value: newValue, children: children)
                 }
             }
-            let newChildren = traversedChild != nil ? children : try transformChildren(transforms: traversedChild!)
+            let newChildren = traversedChild == nil || traversedChild!.isEmpty() ? children : try transformChildren(transforms: traversedChild!)
             if let traversedNext = transforms.traverse([childPrefix]) {
                 if !traversedNext.isEmpty() {
                     if let value = value {

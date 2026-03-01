@@ -43,7 +43,8 @@ public extension Node {
     }
     
     var description: String {
-        return String(decoding: toData()!, as: UTF8.self)
+        guard let data = toData() else { return "" }
+        return String(decoding: data, as: UTF8.self)
     }
 }
 

@@ -1,3 +1,3 @@
-enum DecodingError: Error {
+enum CashewDecodingError: Error {
     case decodeFromDataError
 }

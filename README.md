@@ -1,248 +1,403 @@
 # Cashew
 
-A Swift library for content-addressable storage and Merkle data structures with cryptographic proofs and resolution capabilities.
+A Swift library for content-addressable Merkle data structures with lazy resolution, sparse proofs, and structural transformations.
 
 ## Overview
 
-Cashew provides a comprehensive toolkit for building decentralized applications with content-addressable storage. It implements Merkle trees, radix tries, and sparse Merkle proofs with support for:
+Cashew solves a specific problem: how do you build a key-value store where every version of the data has a unique cryptographic fingerprint, parts of the data can live on remote storage and be loaded on-demand, and you can efficiently prove things about what's in (or not in) the store without materializing all of it?
 
-- **Content-addressable storage** using CIDs (Content Identifiers)
-- **Merkle data structures** including dictionaries and radix nodes
-- **Cryptographic proofs** for data integrity verification
-- **Asynchronous resolution** of remote data references
-- **Transformations** for efficient data mutations
-- **Thread-safe operations** using Swift's actor model
+The answer is a **Merkle radix trie** -- a compressed trie where every node is identified by a CID (Content Identifier), which is the SHA2-256 hash of the node's deterministic JSON serialization. This is the same content-addressing scheme used by IPFS/IPLD, meaning Cashew data structures are natively interoperable with the IPFS ecosystem.
 
-## Key Features
+### The Core Idea
 
-### Core Data Structures
+Every data structure in Cashew is **immutable** and **content-addressed**. When you "modify" a dictionary, you get back a new dictionary with a new root CID. Unchanged subtrees share the same CIDs as before -- this is structural sharing through content addressing.
 
-- **Node Protocol**: Base protocol for all Merkle data structures
-- **MerkleDictionary**: Key-value storage with Merkle tree properties
-- **RadixNode**: Compressed trie implementation for efficient prefix matching
-- **Address**: Content-addressable references with CID support
+The key abstraction is the **Header** -- a smart pointer that holds a CID and optionally the data that CID refers to:
 
-### Proof System
+```
+Header
+  rawCID: "baguqeera..."   <- always present (the hash)
+  node: RadixNode?          <- sometimes present (the actual data)
+```
 
-- **SparseMerkleProof**: Cryptographic proofs for data existence, insertion, mutation, and deletion
-- **Proof validation**: Verify data integrity without storing complete datasets
-- **Multi-proof support**: Validate multiple operations in a single proof
+A Header with `node == nil` is an **unresolved reference** -- you know *what* data exists (by its hash) but haven't loaded it yet. Call `resolve(fetcher:)` to fetch the data from any content-addressable store (IPFS, a database, the filesystem) and populate the `node`. This is how Cashew enables lazy loading of arbitrarily large data structures.
 
-### Resolution & Fetching
+### How the Trie Works
 
-- **Async resolution**: Resolve references to remote data using pluggable fetchers
-- **Resolution strategies**: Flexible strategies for handling different data access patterns
-- **Thread-safe caching**: Built-in support for concurrent operations
+A `MerkleDictionary` maps string keys to values. Internally, it dispatches by the first character of each key to a radix trie branch:
 
-### Transformations
+```
+MerkleDictionary { count: 4 }
+  'a' -> RadixHeader -> RadixNode(prefix: "alice", value: "engineer", children: {})
+  'b' -> RadixHeader -> RadixNode(prefix: "b", value: nil, children: {
+           'o' -> RadixHeader -> RadixNode(prefix: "ob", value: "designer", children: {})
+           'a' -> RadixHeader -> RadixNode(prefix: "az", value: "manager", children: {})
+         })
+```
 
-- **Efficient mutations**: Apply changes without rebuilding entire data structures
-- **Batch operations**: Transform multiple properties in a single operation
-- **Content preservation**: Maintain cryptographic integrity through transformations
+Each `RadixNode` stores a compressed `prefix` (the shared path segment), an optional `value` (present if this node terminates a complete key), and `children` keyed by the next character. Path compression means "alice" is stored as a single node rather than 5 chained nodes -- giving O(k) lookup where k is key length, with much lower constant factors than an uncompressed trie.
+
+Every `RadixNode` is wrapped in a `RadixHeader` that computes its CID. When the dictionary is serialized (for storage or transmission), only the CIDs are written -- the actual node data is stripped. To reconstruct the data, you resolve headers by fetching node data from a content-addressable store using the CIDs.
+
+### What You Can Do
+
+Cashew provides four operations on these structures, each specified as a trie of paths:
+
+**1. Resolution** -- Load data from storage. Three strategies control how deep to go:
+- `.targeted`: fetch one node (e.g., load just the user's profile header)
+- `.recursive`: fetch everything beneath a path (e.g., load an entire subtree)
+- `.list`: fetch the trie structure for navigation but leave value-level addresses unresolved (e.g., list all user IDs without loading their profile data)
+
+**2. Transform** -- Mutate the structure (insert, update, delete). Returns a new tree with new CIDs for affected nodes. Handles radix trie maintenance: splitting prefixes when keys diverge, merging nodes when deletions make branches unnecessary.
+
+**3. Proof** -- Generate a minimal subtree proving specific properties:
+- `.existence`: this key exists with this value
+- `.insertion`: this key does not exist (proving it's safe to insert)
+- `.mutation`: this key exists (proving it can be updated)
+- `.deletion`: this key exists and here are its neighbors (proving deletion is structurally valid)
+
+**4. Storage** -- Persist resolved nodes to a content-addressable store via `storeRecursively`.
+
+### Nested Dictionaries (Two-Level Addressing)
+
+When `ValueType` is itself a `Header<MerkleDictionary>`, Cashew supports hierarchical structures -- a dictionary whose values are other dictionaries, each with their own CID. This is the power case: you can have a users dictionary where each user value is a CID pointing to that user's own key-value store.
+
+Transforms propagate through both levels: `transforms.set(["user1", "name"], value: .update("Alice"))` reaches into the nested dictionary at key "user1" and updates the "name" key inside it. The nested dictionary gets a new CID, which changes the parent's value, which gives the parent a new CID -- the Merkle property propagates up to the root.
+
+A specialized `RadixNode` extension (`where ValueType: Header, ValueType.NodeType: MerkleDictionary`) handles these two-level transforms, including creating new empty nested dictionaries on-the-fly when inserting into a path that doesn't exist yet.
+
+### Data Flow
+
+```
+                        ┌─────────────┐
+                        │   Fetcher   │  (pluggable: IPFS, DB, filesystem)
+                        │ fetch(cid)  │
+                        └──────┬──────┘
+                               │ Data
+                               ▼
+  ┌──────────┐  resolve   ┌─────────┐  transform   ┌──────────┐
+  │Unresolved├───────────>│Resolved ├──────────────>│  New     │
+  │  Header  │            │ Header  │               │ Header   │
+  │(CID only)│            │(CID+Node)              │(new CID) │
+  └──────────┘            └────┬────┘               └────┬─────┘
+                               │                         │
+                               │ proof                   │ storeRecursively
+                               ▼                         ▼
+                        ┌──────────┐             ┌─────────────┐
+                        │  Proof   │             │   Storer    │
+                        │(minimal  │             │ store(cid,  │
+                        │ subtree) │             │       data) │
+                        └──────────┘             └─────────────┘
+```
+
+### Architecture
+
+Protocol hierarchy:
+
+```
+Node (base: Codable + LosslessStringConvertible + Sendable)
+  |-- Scalar (leaf node, no children)
+  |-- RadixNode (compressed trie node)
+  |-- MerkleDictionary (top-level key-value map)
+
+Address (Sendable, supports resolve/proof/transform/store)
+  |-- Header (Codable, wraps a Node with its CID)
+      |-- RadixHeader (Header constrained to RadixNode)
+```
+
+Concrete implementations: `MerkleDictionaryImpl<V>`, `RadixNodeImpl<V>`, `HeaderImpl<N>`, `RadixHeaderImpl<V>`.
+
+Each operation (resolve, transform, proof) is implemented via protocol extensions organized by type: `Node+resolve.swift`, `RadixNode+resolve.swift`, `MerkleDictionary+resolve.swift`, etc. The `RadixNode+transform.swift` file is the most complex (~500 lines) because it handles all the radix trie maintenance (prefix splitting, node merging) plus the nested-dictionary specialization.
+
+Concurrency is handled via Swift actors (`ThreadSafeDictionary`) and `CollectionConcurrencyKit`'s `concurrentForEach` for parallel resolution of sibling branches.
 
 ## Requirements
 
-- iOS 12.0+ / macOS 12.0+
+- macOS 12.0+
 - Swift 6.0+
-- Xcode 14.0+
 
 ## Installation
 
-### Swift Package Manager
-
-Add Cashew to your `Package.swift`:
+Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/yourusername/cashew.git", from: "1.0.0")
+    .package(url: "https://github.com/pumperknickle/cashew.git", from: "1.0.0")
 ]
 ```
 
-Or add it through Xcode:
-1. File → Add Package Dependencies
-2. Enter the repository URL
-3. Select the version range
+## Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| [ArrayTrie](https://github.com/pumperknickle/ArrayTrie) | Trie data structure for path-based traversal of resolution/transform/proof specs |
+| [swift-crypto](https://github.com/apple/swift-crypto) | SHA2-256 hashing for CID generation |
+| [swift-cid](https://github.com/swift-libp2p/swift-cid) | IPFS CIDv1 content identifiers |
+| [swift-multicodec](https://github.com/swift-libp2p/swift-multicodec) | Codec identifiers (dag-json, dag-cbor, etc.) |
+| [swift-multihash](https://github.com/swift-libp2p/swift-multihash) | Self-describing hash format |
+| [swift-collections](https://github.com/apple/swift-collections) | Swift standard collections |
+| [CollectionConcurrencyKit](https://github.com/JohnSundell/CollectionConcurrencyKit) | `concurrentForEach` for parallel async operations |
 
 ## Usage
 
-### Creating Data Structures
+### Creating and Mutating a Dictionary
 
 ```swift
 import cashew
 
-// Create a Merkle dictionary for storing key-value pairs
-let dictionary = MerkleDictionaryImpl<String>(children: [:], count: 0)
+// Create an empty dictionary with String values
+var dict = MerkleDictionaryImpl<String>()
 
-// Create a radix node for prefix-based storage
-let radixNode = RadixNodeImpl<String>(
-    prefix: "user",
-    value: "john_doe", 
-    children: [:]
-)
-```
+// Insert keys
+dict = try dict.inserting(key: "alice", value: "engineer")
+dict = try dict.inserting(key: "bob", value: "designer")
+dict = try dict.inserting(key: "alicia", value: "manager")
 
-### Working with Addresses
+// Lookup
+let value = try dict.get(key: "alice") // Optional("engineer")
 
-```swift
-// Create addresses for content-addressable storage
-let header = try HeaderImpl(
-    rawCid: "baguqeeraygnllsf724bh4ntqonh2shkgfwkxizcdjucbadjkoyj4byvgh7ya",
-    node: someNode
-)
+// Update
+dict = try dict.mutating(key: "bob", value: "lead designer")
 
-// Access the CID
-let cid = header.rawCid
+// Delete
+dict = try dict.deleting(key: "alicia")
 
-// Store node data
-let data = header.toData()
-```
+// Enumerate all keys
+let keys: Set<String> = try dict.allKeys()
 
-### Adding and Updating Data
-
-```swift
-// Add properties to a dictionary
-let updatedDict = dictionary.set(properties: [
-    "name": nameAddress,
-    "email": emailAddress,
-    "profile": profileAddress
-])
-
-// Update a radix node
-let updatedNode = radixNode.set(properties: [
-    "a": childAddress
-])
-```
-
-### Proofs and Verification
-
-```swift
-// Create proof paths using ArrayTrie
-var proofPaths = ArrayTrie<SparseMerkleProof>()
-proofPaths.insert(["user", "profile"], value: .existence)
-proofPaths.insert(["user", "email"], value: .mutation("new_email@example.com"))
-
-// Generate proofs
-let proovedDict = try await dictionary.proof(paths: proofPaths, fetcher: myFetcher)
-
-// Validate different proof types
-proofPaths.insert(["new_user"], value: .insertion("alice"))
-proofPaths.insert(["old_user"], value: .deletion)
-```
-
-### Resolution and Fetching
-
-```swift
-// Implement a custom fetcher
-struct MyFetcher: Fetcher {
-    func fetch(rawCid: String) async throws -> Data {
-        // Fetch data from IPFS, database, network, etc.
-        return try await networkClient.fetchData(for: rawCid)
-    }
-}
-
-// Create resolution strategies
-var resolutionPaths = ArrayTrie<ResolutionStrategy>()
-resolutionPaths.insert(["users"], value: .list)
-resolutionPaths.insert(["user", "profile"], value: .recursive)
-resolutionPaths.insert(["config", "theme"], value: .scalar)
-
-// Resolve references
-let fetcher = MyFetcher()
-let resolved = try await dictionary.resolve(paths: resolutionPaths, fetcher: fetcher)
-```
-
-### Transformations
-
-```swift
-// Create transformation paths
-var transforms = ArrayTrie<Transform>()
-transforms.insert(["user", "name"], value: .update("Alice Johnson"))
-transforms.insert(["user", "settings", "theme"], value: .insert("dark"))
-transforms.insert(["temp_data"], value: .delete)
-
-// Apply transformations
-let transformed = try dictionary.transform(transforms: transforms)
+// Enumerate all key-value pairs
+let pairs: [String: String] = try dict.allKeysAndValues()
 ```
 
 ### Content Addressability
 
+Every structure has a deterministic CID derived from its content:
+
 ```swift
-// All data structures maintain content addressability
-let node1 = RadixNodeImpl<String>(prefix: "test", value: "data", children: [:])
-let node2 = RadixNodeImpl<String>(prefix: "test", value: "data", children: [:])
+let node = RadixNodeImpl<String>(prefix: "hello", value: "world", children: [:])
+let header = RadixHeaderImpl(node: node)
+print(header.rawCID) // CIDv1 string, e.g. "baguqeera..."
 
-// Same content produces same hash
-assert(node1.description == node2.description)
-
-// Different content produces different hash
-let node3 = RadixNodeImpl<String>(prefix: "test", value: "different", children: [:])
-assert(node1.description != node3.description)
+// Same content always produces the same CID
+let header2 = RadixHeaderImpl(node: node)
+assert(header.rawCID == header2.rawCID)
 ```
 
+### Resolution (Lazy Loading)
+
+Headers can be created with only a CID. Resolution fetches the actual data using a pluggable `Fetcher`:
+
+```swift
+struct IPFSFetcher: Fetcher {
+    func fetch(rawCid: String) async throws -> Data {
+        // fetch from IPFS, a database, or any content-addressable store
+    }
+}
+
+let fetcher = IPFSFetcher()
+
+// Three resolution strategies, specified via ArrayTrie<ResolutionStrategy>:
+var paths = ArrayTrie<ResolutionStrategy>()
+
+// .targeted - fetch just this node (one level)
+paths.set(["users", "a"], value: .targeted)
+
+// .recursive - fetch this node and everything beneath it
+paths.set(["config"], value: .recursive)
+
+// .list - fetch the trie structure for traversal but leave nested
+//         address values unresolved (lazy loading)
+paths.set(["posts"], value: .list)
+
+let resolved = try await dictionary.resolve(paths: paths, fetcher: fetcher)
+```
+
+### Storage
+
+Persist resolved data using a pluggable `Storer`:
+
+```swift
+struct MyStore: Storer {
+    func store(rawCid: String, data: Data) throws {
+        // write to disk, database, IPFS, etc.
+    }
+}
+
+// Recursively stores this header and all resolved children
+try header.storeRecursively(storer: MyStore())
+```
+
+### Transforms (Batch Mutations)
+
+Apply multiple insert/update/delete operations in one pass using `ArrayTrie<Transform>`:
+
+```swift
+var transforms = ArrayTrie<Transform>()
+transforms.set(["alice"], value: .update("senior engineer"))
+transforms.set(["charlie"], value: .insert("intern"))
+transforms.set(["bob"], value: .delete)
+
+let newDict = try dict.transform(transforms: transforms)
+// newDict has the mutations applied; CIDs are recomputed
+```
+
+### Sparse Merkle Proofs
+
+Generate minimal subtrees that prove specific properties about keys:
+
+```swift
+var proofPaths = ArrayTrie<SparseMerkleProof>()
+
+// Prove a key exists with its current value
+proofPaths.set(["alice"], value: .existence)
+
+// Prove a key can be inserted (doesn't exist yet)
+proofPaths.set(["dave"], value: .insertion)
+
+// Prove a key exists and can be mutated
+proofPaths.set(["bob"], value: .mutation)
+
+// Prove a key exists and can be deleted
+proofPaths.set(["charlie"], value: .deletion)
+
+let proof = try await dictionary.proof(paths: proofPaths, fetcher: fetcher)
+// proof contains only the nodes needed to verify these properties
+```
+
+### Nested Dictionaries
+
+Values can themselves be `Header` types wrapping `MerkleDictionary`, enabling nested/hierarchical structures:
+
+```swift
+typealias InnerDict = MerkleDictionaryImpl<String>
+typealias OuterDict = MerkleDictionaryImpl<HeaderImpl<InnerDict>>
+
+var outer = OuterDict()
+let inner = try InnerDict()
+    .inserting(key: "name", value: "Alice")
+    .inserting(key: "role", value: "Engineer")
+let innerHeader = HeaderImpl(node: inner)
+
+outer = try outer.inserting(key: "user1", value: innerHeader)
+```
+
+Transforms on nested dictionaries propagate through the tree:
+
+```swift
+var transforms = ArrayTrie<Transform>()
+// This updates "name" inside the nested dict at key "user1"
+transforms.set(["user1", "name"], value: .update("Alicia"))
+
+let updated = try outer.transform(transforms: transforms)
+```
 
 ## API Reference
 
-### Core Protocols
+### Protocols
 
-- **Node**: Base protocol for all Merkle data structures
-  - `get(property:)` - Retrieve address for a property
-  - `set(properties:)` - Update multiple properties
-  - `resolve(paths:fetcher:)` - Resolve remote references
-  - `transform(transforms:)` - Apply mutations
-  - `proof(paths:fetcher:)` - Generate cryptographic proofs
+| Protocol | Conforms To | Purpose |
+|----------|-------------|---------|
+| `Node` | `Codable`, `LosslessStringConvertible`, `Sendable` | Base for all Merkle structures. Defines `get`, `set`, `resolve`, `transform`, `proof`, `storeRecursively`. |
+| `Address` | `Sendable` | Reference to content. Supports `resolve`, `proof`, `transform`, `storeRecursively`, `removingNode`. |
+| `Header` | `Codable`, `Address`, `LosslessStringConvertible` | Wraps a `Node` with its CID. Can be resolved or unresolved. |
+| `RadixNode` | `Node` | Compressed trie node with `prefix`, optional `value`, and `children`. |
+| `RadixHeader` | `Header` | Header constrained to `RadixNode`. |
+| `MerkleDictionary` | `Node` | Top-level key-value map. Dispatches by first character to `RadixHeader` children. |
+| `Scalar` | `Node` | Leaf node with no children. Returns empty for `properties()`. |
+| `Fetcher` | `Sendable` | Async data retrieval by CID. One method: `fetch(rawCid:) async throws -> Data`. |
+| `Storer` | -- | Data persistence by CID. One method: `store(rawCid:data:) throws`. |
 
-- **Address**: Content-addressable references
-  - `rawCid` - Content identifier string
-  - `toData()` - Serialize to bytes
-  - `storeRecursively(storer:)` - Persist data
+### Enums
 
-- **Fetcher**: Data retrieval interface
-  - `fetch(rawCid:)` - Fetch data by content ID
+| Enum | Cases | Purpose |
+|------|-------|---------|
+| `ResolutionStrategy` | `.targeted`, `.recursive`, `.list` | Controls how deep resolution goes |
+| `Transform` | `.insert(String)`, `.update(String)`, `.delete` | Mutation operations for transforms |
+| `SparseMerkleProof` | `.insertion`, `.mutation`, `.deletion`, `.existence` | Proof types for sparse Merkle proofs |
 
-### Data Types
+### Error Types
 
-- **SparseMerkleProof**: Proof operations
-  - `.existence` - Verify data exists
-  - `.insertion(value)` - Prove data can be added
-  - `.mutation(value)` - Prove data can be changed
-  - `.deletion` - Prove data can be removed
+| Error | Cases |
+|-------|-------|
+| `DataErrors` | `.nodeNotAvailable`, `.serializationFailed`, `.cidCreationFailed` |
+| `TransformErrors` | `.transformFailed`, `.invalidKey`, `.missingData` |
+| `ProofErrors` | `.invalidProofType`, `.proofFailed` |
+| `ResolutionErrors` | `.TypeError` |
+| `DecodingError` (internal) | `.decodeFromDataError` |
 
-- **ResolutionStrategy**: Resolution modes
-  - `.scalar` - Resolve single values
-  - `.list` - Resolve collections
-  - `.recursive` - Deep resolution
-  - `.targeted` - Specific node resolution
+### Concrete Types
 
-- **Transform**: Mutation operations
-  - `.insert(value)` - Add new data
-  - `.update(value)` - Change existing data
-  - `.delete` - Remove data
+| Type | Purpose |
+|------|---------|
+| `MerkleDictionaryImpl<V>` | Concrete `MerkleDictionary`. `V` must be `Codable + Sendable + LosslessStringConvertible`. |
+| `RadixNodeImpl<V>` | Concrete `RadixNode` with JSON coding for `Character`-keyed children. |
+| `HeaderImpl<N>` | Generic `Header` wrapping any `Node` type. |
+| `RadixHeaderImpl<V>` | `RadixHeader` for `RadixNodeImpl<V>`. |
+| `Box<T>` | Wrapper making `Sendable` types storable in a reference type (used by `HeaderImpl`). |
+| `ThreadSafeDictionary<K,V>` | Actor-based thread-safe dictionary for concurrent resolution. |
 
-## Architecture
+## Project Structure
 
-Cashew is built around several key protocols:
+```
+Sources/cashew/
+  Core/
+    Node.swift              -- Node protocol + JSON serialization + compareSlices/commonPrefix helpers
+    Address.swift           -- Address protocol
+    Header.swift            -- Header protocol + CID creation (sync and async)
+    HeaderImpl.swift        -- Concrete Header + Box<T> wrapper
+    Scalar.swift            -- Leaf node protocol (no children)
+    MulticodecExtensions.swift -- Codec lookup utilities
+  MerkleDataStructures/
+    MerkleDictionary.swift  -- MerkleDictionary protocol + allKeys/allKeysAndValues
+    MerkleDictionaryImpl.swift -- Concrete implementation with JSON coding
+    RadixNode.swift         -- RadixNode protocol + property accessors
+    RadixNodeImpl.swift     -- Concrete implementation with JSON coding
+    RadixHeader.swift       -- RadixHeader protocol (one line)
+    RadixHeaderImpl.swift   -- Concrete RadixHeader with JSON coding
+  Fetcher/
+    Fetcher.swift           -- Fetcher protocol
+    Storer.swift            -- Storer protocol
+    Node+store.swift        -- Node.storeRecursively extension
+    Header+store.swift      -- Header.storeRecursively extension
+  Resolver/
+    ResolutionStrategy.swift -- .targeted/.recursive/.list enum
+    ResolutionErrors.swift  -- ResolutionErrors.TypeError
+    Node+resolve.swift      -- Node.resolve and Node.resolveRecursive
+    Header+resolve.swift    -- Header.resolve (fetches if node is nil)
+    RadixNode+resolve.swift -- RadixNode.resolve with prefix traversal + list resolution
+    RadixHeader+resolve.swift -- RadixHeader resolution (delegates to node)
+    MerkleDictionary+resolve.swift -- MerkleDictionary resolution strategies
+    Scalar+resolve.swift    -- No-op resolution for scalars
+  Transform/
+    Transform.swift         -- .insert/.update/.delete enum
+    TransformErrors.swift   -- TransformErrors enum
+    Node+transform.swift    -- Generic Node.transform
+    Header+transform.swift  -- Header.transform (requires resolved node)
+    RadixNode+transform.swift -- RadixNode transform + insert/delete/mutate/get + nested dict specialization
+    RadixHeader+transform.swift -- RadixHeader delegates to node
+    MerkleDictionary+transform.swift -- MerkleDictionary transform + get/insert/delete/mutate
+  Proofs/
+    SparseMerkleProof.swift -- .insertion/.mutation/.deletion/.existence enum
+    ProofErrors.swift       -- ProofErrors enum
+    Node+proofs.swift       -- Generic Node.proof
+    Header+proofs.swift     -- Header.proof (fetches if needed)
+    RadixNode+proofs.swift  -- RadixNode proof with prefix traversal + grandchild resolution
+    RadixHeader+proofs.swift -- RadixHeader proof delegation
+    MerkleDictionary+proofs.swift -- MerkleDictionary proof delegation
+  ThreadSafeDictionary.swift -- Actor-based thread-safe dictionary
+  DataErrors.swift          -- DataErrors enum
+  DecodingErrors.swift      -- Internal DecodingError enum
+  LosslessStringConvertible+data.swift -- Data/String conversion extensions
+```
 
-- **Node**: Base protocol for all data structures
-- **Address**: Content-addressable references  
-- **Fetcher**: Pluggable data retrieval interface
-- **Storer**: Pluggable data persistence interface
+## Running Tests
 
-The library uses Swift's modern concurrency features including async/await and actors for thread-safe operations.
+```bash
+swift test
+```
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass: `swift test`
-5. Submit a pull request
+175 tests across 14 test files covering resolution, transforms, proofs, headers, and key enumeration.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Related Projects
-
-- [swift-cid](https://github.com/swift-libp2p/swift-cid) - Content Identifier implementation
-- [swift-multicodec](https://github.com/swift-libp2p/swift-multicodec) - Multicodec support
-- [swift-multihash](https://github.com/swift-libp2p/swift-multihash) - Cryptographic hash functions
+MIT

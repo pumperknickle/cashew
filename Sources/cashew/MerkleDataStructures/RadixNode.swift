@@ -52,7 +52,7 @@ public extension RadixNode {
         guard let char = property.first else { return nil }
         return children[char]
     }
-    
+
     func getChild(property: PathSegment) -> ChildType {
         return children[property.first!]!
     }
@@ -62,6 +62,9 @@ public extension RadixNode {
     }
     
     func set(property: PathSegment, to child: any Address) -> Self {
-        return self
+        guard let typedChild = child as? ChildType, let char = property.first else { return self }
+        var newChildren = children
+        newChildren[char] = typedChild
+        return Self(prefix: prefix, value: value, children: newChildren)
     }
 }

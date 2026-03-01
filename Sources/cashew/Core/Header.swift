@@ -57,8 +57,8 @@ public extension Header {
     }
     
     private static func serializeNode(_ node: NodeType, codec: Codecs) throws -> Data {
-        // node.toData() already returns properly formatted JSON with sorted keys
-        return node.toData() ?? Data()
+        guard let data = node.toData() else { throw DataErrors.serializationFailed }
+        return data
     }
     
     func mapToData() throws -> Data {

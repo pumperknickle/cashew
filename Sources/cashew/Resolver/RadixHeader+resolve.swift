@@ -7,7 +7,7 @@ public extension RadixHeader {
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw DecodingError.decodeFromDataError }
+            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
             return Self(rawCID: rawCID, node: try await newNode.resolveList(paths: paths, fetcher: fetcher))
         }
     }
@@ -21,7 +21,7 @@ public extension RadixHeader {
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw DecodingError.decodeFromDataError }
+            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
             let resolvedNode = try await newNode.resolve(paths: paths, fetcher: fetcher)
             return Self(rawCID: rawCID, node: resolvedNode)
         }
@@ -34,7 +34,7 @@ public extension RadixHeader {
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw DecodingError.decodeFromDataError }
+            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
             let resolvedNode = try await newNode.resolveRecursive(fetcher: fetcher)
             return Self(rawCID: rawCID, node: resolvedNode)
         }
@@ -46,7 +46,7 @@ public extension RadixHeader {
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw DecodingError.decodeFromDataError }
+            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
             return Self(rawCID: rawCID, node: newNode)
         }
     }
@@ -57,7 +57,7 @@ public extension RadixHeader {
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw DecodingError.decodeFromDataError }
+            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
             return Self(rawCID: rawCID, node: try await newNode.resolveList(paths: paths, nextPaths: nextPaths, fetcher: fetcher))
         }
     }

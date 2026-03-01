@@ -16,7 +16,8 @@ public extension MerkleDictionary {
     }
     
     func get(property: PathSegment) -> Address? {
-        return children[Character(property)]
+        guard let char = property.first else { return nil }
+        return children[char]
     }
     
     func properties() -> Set<PathSegment> {
