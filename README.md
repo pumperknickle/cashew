@@ -58,6 +58,8 @@ Cashew provides four operations on these structures, each specified as a trie of
 
 **4. Storage** -- Persist resolved nodes to a content-addressable store via `storeRecursively`.
 
+**5. Encryption** -- Selectively encrypt parts of the tree while keeping others public. Three strategies (`targeted`, `list`, `recursive`) control what gets encrypted at each path. Encryption is preserved through transforms when a `KeyProvider` is supplied.
+
 ### Nested Dictionaries (Two-Level Addressing)
 
 When `ValueType` is itself a `Header<MerkleDictionary>`, Cashew supports hierarchical structures -- a dictionary whose values are other dictionaries, each with their own CID. This is the power case: you can have a users dictionary where each user value is a CID pointing to that user's own key-value store.
@@ -81,13 +83,14 @@ A specialized `RadixNode` extension (`where ValueType: Header, ValueType.NodeTyp
   │(CID only)│            │(CID+Node)              │(new CID) │
   └──────────┘            └────┬────┘               └────┬─────┘
                                │                         │
-                               │ proof                   │ storeRecursively
-                               ▼                         ▼
-                        ┌──────────┐             ┌─────────────┐
-                        │  Proof   │             │   Storer    │
-                        │(minimal  │             │ store(cid,  │
-                        │ subtree) │             │       data) │
-                        └──────────┘             └─────────────┘
+                               │ proof     encrypt       │ storeRecursively
+                               ▼             │           ▼
+                        ┌──────────┐         │    ┌─────────────┐
+                        │  Proof   │         └───>│   Storer    │
+                        │(minimal  │              │ + KeyProvider│
+                        │ subtree) │              │ store(cid,  │
+                        └──────────┘              │       data) │
+                                                  └─────────────┘
 ```
 
 ### Architecture
@@ -100,8 +103,8 @@ Node (base: Codable + LosslessStringConvertible + Sendable)
   |-- RadixNode (compressed trie node)
   |-- MerkleDictionary (top-level key-value map)
 
-Address (Sendable, supports resolve/proof/transform/store)
-  |-- Header (Codable, wraps a Node with its CID)
+Address (Sendable, supports resolve/proof/transform/store/encrypt)
+  |-- Header (Codable, wraps a Node with its CID + optional EncryptionInfo)
       |-- RadixHeader (Header constrained to RadixNode)
 ```
 
@@ -291,6 +294,154 @@ transforms.set(["user1", "name"], value: .update("Alicia"))
 let updated = try outer.transform(transforms: transforms)
 ```
 
+### Encryption
+
+Cashew supports optional AES-GCM encryption for content-addressable headers. The CID becomes a hash of the ciphertext rather than the plaintext, so content-addressing guarantees still hold — you just can't read the content without the key.
+
+This is useful when multiple parties share a content-addressable store but each party's data should only be readable by holders of that party's key, or when some fields in a record are public while others are private.
+
+#### Encrypting a Single Header
+
+```swift
+import Crypto
+
+let key = SymmetricKey(size: .bits256)
+let scalar = MyScalar(value: 42)
+
+let plainHeader = HeaderImpl(node: scalar)
+let encHeader = try HeaderImpl(node: scalar, key: key)
+
+encHeader.encryptionInfo?.keyHash  // base64(SHA256(key))
+encHeader.encryptionInfo?.iv       // base64(random nonce)
+```
+
+#### Storing and Resolving Encrypted Data
+
+Storers and fetchers must conform to `KeyProvider` to look up keys by hash:
+
+```swift
+class MyStoreFetcher: Storer, Fetcher, KeyProvider {
+    private var storage: [String: Data] = [:]
+    private var keys: [String: SymmetricKey] = [:]
+
+    func registerKey(_ key: SymmetricKey) {
+        let keyData = key.withUnsafeBytes { Data($0) }
+        let hash = Data(SHA256.hash(data: keyData)).base64EncodedString()
+        keys[hash] = key
+    }
+
+    func key(for keyHash: String) -> SymmetricKey? { keys[keyHash] }
+    func store(rawCid: String, data: Data) { storage[rawCid] = data }
+    func fetch(rawCid: String) async throws -> Data {
+        guard let data = storage[rawCid] else { throw MyError.notFound }
+        return data
+    }
+}
+
+let fetcher = MyStoreFetcher()
+fetcher.registerKey(key)
+
+let encHeader = try HeaderImpl(node: scalar, key: key)
+try encHeader.storeRecursively(storer: fetcher)
+
+let cidOnly = HeaderImpl<MyScalar>(
+    rawCID: encHeader.rawCID,
+    node: nil,
+    encryptionInfo: encHeader.encryptionInfo
+)
+let resolved = try await cidOnly.resolve(fetcher: fetcher)
+resolved.node!  // decrypted scalar
+```
+
+At store time, the header re-encrypts deterministically using the IV stored in `encryptionInfo`. Because AES-GCM is deterministic given the same (key, nonce, plaintext) triple, this produces identical ciphertext whose hash matches the header's CID.
+
+#### Path-Based Encryption Strategies
+
+Encryption strategies are specified via `ArrayTrie<EncryptionStrategy>`, where paths map to parts of the dictionary's key space:
+
+- **`.targeted(key)`** — Encrypts the **value** at the matched path. The trie structure stays plaintext (you can enumerate keys) but the data at each key is opaque without the key.
+- **`.list(key)`** — Encrypts the **trie structure** (RadixHeaders). You can't enumerate keys without decrypting, but values remain as plaintext CIDs.
+- **`.recursive(key)`** — Encrypts **everything** — both trie structure and values — with the same key.
+
+```swift
+var dict = MerkleDictionaryImpl<HeaderImpl<MyScalar>>()
+dict = try dict.inserting(key: "public-field", value: HeaderImpl(node: MyScalar(value: 1)))
+dict = try dict.inserting(key: "secret-field", value: HeaderImpl(node: MyScalar(value: 2)))
+let header = HeaderImpl(node: dict)
+
+// Only encrypt the value at "secret-field"
+var encryption = ArrayTrie<EncryptionStrategy>()
+encryption.set(["secret-field"], value: .targeted(key))
+let encrypted = try header.encrypt(encryption: encryption)
+
+let publicVal = try encrypted.node!.get(key: "public-field")!
+publicVal.encryptionInfo  // nil — plaintext
+
+let secretVal = try encrypted.node!.get(key: "secret-field")!
+secretVal.encryptionInfo  // non-nil — encrypted
+```
+
+Recursive encryption propagates to all descendants, but longer-path entries override shorter ones. This lets you use different keys for different branches:
+
+```swift
+let teamKey = SymmetricKey(size: .bits256)
+let aliceKey = SymmetricKey(size: .bits256)
+
+var encryption = ArrayTrie<EncryptionStrategy>()
+encryption.set([""], value: .recursive(teamKey))
+encryption.set(["alice"], value: .recursive(aliceKey))
+
+let encrypted = try header.encrypt(encryption: encryption)
+// "bob" uses teamKey; "alice" and descendants use aliceKey
+```
+
+#### Preserving Encryption Through Transforms
+
+When you transform an encrypted tree, encryption is preserved automatically if you supply a `KeyProvider`:
+
+```swift
+var transforms = ArrayTrie<Transform>()
+transforms.set(["alice"], value: .delete)
+let result = try encrypted.transform(transforms: transforms, keyProvider: fetcher)
+
+result!.encryptionInfo!.keyHash == encrypted.encryptionInfo!.keyHash  // true
+result!.rawCID != encrypted.rawCID  // true — content changed
+```
+
+| Transform | Encryption behavior |
+|-----------|-------------------|
+| **Delete** (value removed) | Header is gone — nothing to preserve |
+| **Delete** (trie restructured) | Surviving headers keep their encryption |
+| **Update** | Header re-encrypted with same key, new IV |
+| **Insert** | New header is **not** auto-encrypted |
+| **No keyProvider** | Encryption is stripped (backward compatible) |
+
+To encrypt newly inserted content, use the combined transform+encrypt overload:
+
+```swift
+let result = try header.transform(
+    transforms: transforms,
+    encryption: encryption,
+    keyProvider: fetcher
+)
+```
+
+#### Serialization Format
+
+Encrypted headers serialize to a string preserving the encryption metadata:
+
+```swift
+let enc = try HeaderImpl(node: scalar, key: key)
+enc.description
+// "enc:abc123...==:def456...==:baguqeer..."
+//       keyHash       iv        rawCID
+
+let restored = HeaderImpl<MyScalar>(enc.description)!
+restored.rawCID == enc.rawCID  // true
+```
+
+Plaintext headers serialize as before — just the bare CID string. See [Encryption README](Sources/cashew/Encryption/README.md) for the full encryption reference.
+
 ## API Reference
 
 ### Protocols
@@ -299,13 +450,15 @@ let updated = try outer.transform(transforms: transforms)
 |----------|-------------|---------|
 | `Node` | `Codable`, `LosslessStringConvertible`, `Sendable` | Base for all Merkle structures. Defines `get`, `set`, `resolve`, `transform`, `proof`, `storeRecursively`. |
 | `Address` | `Sendable` | Reference to content. Supports `resolve`, `proof`, `transform`, `storeRecursively`, `removingNode`. |
-| `Header` | `Codable`, `Address`, `LosslessStringConvertible` | Wraps a `Node` with its CID. Can be resolved or unresolved. |
+| `Header` | `Codable`, `Address`, `LosslessStringConvertible` | Wraps a `Node` with its CID and optional `EncryptionInfo`. Can be resolved or unresolved. |
 | `RadixNode` | `Node` | Compressed trie node with `prefix`, optional `value`, and `children`. |
 | `RadixHeader` | `Header` | Header constrained to `RadixNode`. |
 | `MerkleDictionary` | `Node` | Top-level key-value map. Dispatches by first character to `RadixHeader` children. |
 | `Scalar` | `Node` | Leaf node with no children. Returns empty for `properties()`. |
 | `Fetcher` | `Sendable` | Async data retrieval by CID. One method: `fetch(rawCid:) async throws -> Data`. |
 | `Storer` | -- | Data persistence by CID. One method: `store(rawCid:data:) throws`. |
+| `KeyProvider` | -- | Key lookup by hash. One method: `key(for:) -> SymmetricKey?`. |
+| `KeyProvidingFetcher` | `Fetcher`, `KeyProvider` | Combined fetcher + key provider for resolving encrypted data. |
 
 ### Enums
 
@@ -314,12 +467,13 @@ let updated = try outer.transform(transforms: transforms)
 | `ResolutionStrategy` | `.targeted`, `.recursive`, `.list` | Controls how deep resolution goes |
 | `Transform` | `.insert(String)`, `.update(String)`, `.delete` | Mutation operations for transforms |
 | `SparseMerkleProof` | `.insertion`, `.mutation`, `.deletion`, `.existence` | Proof types for sparse Merkle proofs |
+| `EncryptionStrategy` | `.targeted(key)`, `.list(key)`, `.recursive(key)` | Controls what gets encrypted at each path |
 
 ### Error Types
 
 | Error | Cases |
 |-------|-------|
-| `DataErrors` | `.nodeNotAvailable`, `.serializationFailed`, `.cidCreationFailed` |
+| `DataErrors` | `.nodeNotAvailable`, `.serializationFailed`, `.cidCreationFailed`, `.encryptionFailed`, `.keyNotFound`, `.invalidIV` |
 | `TransformErrors` | `.transformFailed`, `.invalidKey`, `.missingData` |
 | `ProofErrors` | `.invalidProofType`, `.proofFailed` |
 | `ResolutionErrors` | `.TypeError` |
@@ -335,6 +489,8 @@ let updated = try outer.transform(transforms: transforms)
 | `RadixHeaderImpl<V>` | `RadixHeader` for `RadixNodeImpl<V>`. |
 | `Box<T>` | Wrapper making `Sendable` types storable in a reference type (used by `HeaderImpl`). |
 | `ThreadSafeDictionary<K,V>` | Actor-based thread-safe dictionary for concurrent resolution. |
+| `EncryptionInfo` | Metadata on an encrypted header (`keyHash` + `iv`). |
+| `EncryptionHelper` | Low-level AES-GCM encrypt/decrypt utilities. |
 
 ## Project Structure
 
@@ -343,8 +499,10 @@ Sources/cashew/
   Core/
     Node.swift              -- Node protocol + JSON serialization + compareSlices/commonPrefix helpers
     Address.swift           -- Address protocol
-    Header.swift            -- Header protocol + CID creation (sync and async)
+    Header.swift            -- Header protocol + CID creation + encryption helpers
     HeaderImpl.swift        -- Concrete Header + Box<T> wrapper
+    EncryptionInfo.swift    -- EncryptionInfo struct (keyHash + iv metadata)
+    EncryptionHelper.swift  -- AES-GCM encrypt/decrypt utilities
     Scalar.swift            -- Leaf node protocol (no children)
     MulticodecExtensions.swift -- Codec lookup utilities
   MerkleDataStructures/
@@ -357,8 +515,10 @@ Sources/cashew/
   Fetcher/
     Fetcher.swift           -- Fetcher protocol
     Storer.swift            -- Storer protocol
+    KeyProvider.swift       -- KeyProvider protocol (key lookup by hash)
+    KeyProvidingFetcher.swift -- KeyProvidingFetcher protocol (Fetcher + KeyProvider)
     Node+store.swift        -- Node.storeRecursively extension
-    Header+store.swift      -- Header.storeRecursively extension
+    Header+store.swift      -- Header.storeRecursively extension (re-encrypts at store time)
   Resolver/
     ResolutionStrategy.swift -- .targeted/.recursive/.list enum
     ResolutionErrors.swift  -- ResolutionErrors.TypeError
@@ -376,6 +536,14 @@ Sources/cashew/
     RadixNode+transform.swift -- RadixNode transform + insert/delete/mutate/get + nested dict specialization
     RadixHeader+transform.swift -- RadixHeader delegates to node
     MerkleDictionary+transform.swift -- MerkleDictionary transform + get/insert/delete/mutate
+  Encryption/
+    README.md               -- Full encryption reference documentation
+    EncryptionStrategy.swift -- .targeted/.list/.recursive enum
+    Node+encrypt.swift      -- Node.encrypt extension
+    Header+encrypt.swift    -- Header.encrypt + encryptSelf extensions
+    RadixNode+encrypt.swift -- RadixNode path-based encryption
+    RadixHeader+encrypt.swift -- RadixHeader encryption delegation
+    MerkleDictionary+encrypt.swift -- MerkleDictionary encryption delegation
   Proofs/
     SparseMerkleProof.swift -- .insertion/.mutation/.deletion/.existence enum
     ProofErrors.swift       -- ProofErrors enum
@@ -396,7 +564,7 @@ Sources/cashew/
 swift test
 ```
 
-175 tests across 14 test files covering resolution, transforms, proofs, headers, and key enumeration.
+277 tests across 15 test files covering resolution, transforms, proofs, headers, key enumeration, and encryption.
 
 ## License
 

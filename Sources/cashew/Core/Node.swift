@@ -16,7 +16,9 @@ public protocol Node: Codable, LosslessStringConvertible, Sendable {
     func resolve(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self
     func storeRecursively(storer: Storer) throws
     func transform(transforms: ArrayTrie<Transform>) throws -> Self?
+    func transform(transforms: ArrayTrie<Transform>, keyProvider: KeyProvider?) throws -> Self?
     func proof(paths: ArrayTrie<SparseMerkleProof>, fetcher: Fetcher) async throws -> Self
+    func encrypt(encryption: ArrayTrie<EncryptionStrategy>) throws -> Self
 }
 
 private let sharedJSONDecoder = JSONDecoder()

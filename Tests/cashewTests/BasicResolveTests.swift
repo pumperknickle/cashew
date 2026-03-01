@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import ArrayTrie
+import Crypto
 @preconcurrency import Multicodec
 @testable import cashew
 
@@ -81,25 +82,15 @@ struct BasicResolveTests {
     struct SimpleHeader: Header {
         let rawCID: String
         let node: SimpleNode?
-        
-        init(rawCID: String) {
-            self.rawCID = rawCID
-            self.node = nil
-        }
-        
-        init(rawCID: String, node: SimpleNode?) {
+
+        init(rawCID: String, node: SimpleNode?, encryptionInfo: EncryptionInfo?) {
             self.rawCID = rawCID
             self.node = node
         }
-        
-        init(node: SimpleNode) {
-            self.node = node
+
+        init(node: SimpleNode, key: SymmetricKey) throws {
             self.rawCID = Self.createSyncCID(for: node, codec: Self.defaultCodec)
-        }
-        
-        init(node: SimpleNode, codec: Codecs) {
             self.node = node
-            self.rawCID = Self.createSyncCID(for: node, codec: codec)
         }
     }
     

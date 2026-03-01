@@ -8,19 +8,19 @@ public extension Header {
         }
         return try await proof(paths: pathTrie, fetcher: fetcher)
     }
-    
+
     func proof(paths: ArrayTrie<SparseMerkleProof>, fetcher: Fetcher) async throws -> Self {
-        // Check if paths is truly empty (no root value and no children)
         if paths.isEmpty() && paths.get([]) == nil { return self }
         if let node = node {
             let resolvedNode = try await node.proof(paths: paths, fetcher: fetcher)
-            return Self(rawCID: rawCID, node: resolvedNode)
+            return Self(rawCID: rawCID, node: resolvedNode, encryptionInfo: encryptionInfo)
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
+            let decrypted = try decryptIfNeeded(data: fetchedData, fetcher: fetcher)
+            guard let newNode = NodeType(data: decrypted) else { throw CashewDecodingError.decodeFromDataError }
             let resolvedNode = try await newNode.proof(paths: paths, fetcher: fetcher)
-            return Self(rawCID: rawCID, node: resolvedNode)
+            return Self(rawCID: rawCID, node: resolvedNode, encryptionInfo: encryptionInfo)
         }
     }
 }

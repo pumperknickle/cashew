@@ -23,4 +23,18 @@ public extension RadixHeader {
         let newNode = try node.mutating(key: key, value: value)
         return Self(node: newNode)
     }
+
+    func deleting(key: ArraySlice<Character>, keyProvider: KeyProvider?) throws -> Self? {
+        guard let node = node else { throw TransformErrors.missingData }
+        if let newNode = try node.deleting(key: key) {
+            return try reEncryptIfNeeded(node: newNode, keyProvider: keyProvider)
+        }
+        return nil
+    }
+
+    func mutating(key: ArraySlice<Character>, value: NodeType.ValueType, keyProvider: KeyProvider?) throws -> Self {
+        guard let node = node else { throw TransformErrors.missingData }
+        let newNode = try node.mutating(key: key, value: value)
+        return try reEncryptIfNeeded(node: newNode, keyProvider: keyProvider)
+    }
 }

@@ -7,57 +7,61 @@ public extension RadixHeader {
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
+            let decrypted = try decryptIfNeeded(data: fetchedData, fetcher: fetcher)
+            guard let newNode = NodeType(data: decrypted) else { throw CashewDecodingError.decodeFromDataError }
             return Self(rawCID: rawCID, node: try await newNode.resolveList(paths: paths, fetcher: fetcher))
         }
     }
-    
+
     func resolve(paths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
-        // Check if paths is truly empty (no root value and no children)
         if paths.isEmpty() && paths.get([]) == nil { return self }
         if let node = node {
             let resolvedNode = try await node.resolve(paths: paths, fetcher: fetcher)
-            return Self(rawCID: rawCID, node: resolvedNode)
+            return Self(rawCID: rawCID, node: resolvedNode, encryptionInfo: encryptionInfo)
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
+            let decrypted = try decryptIfNeeded(data: fetchedData, fetcher: fetcher)
+            guard let newNode = NodeType(data: decrypted) else { throw CashewDecodingError.decodeFromDataError }
             let resolvedNode = try await newNode.resolve(paths: paths, fetcher: fetcher)
-            return Self(rawCID: rawCID, node: resolvedNode)
+            return Self(rawCID: rawCID, node: resolvedNode, encryptionInfo: encryptionInfo)
         }
     }
-    
+
     func resolveRecursive(fetcher: Fetcher) async throws -> Self {
         if let node = node {
             let resolvedNode = try await node.resolveRecursive(fetcher: fetcher)
-            return Self(rawCID: rawCID, node: resolvedNode)
+            return Self(rawCID: rawCID, node: resolvedNode, encryptionInfo: encryptionInfo)
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
+            let decrypted = try decryptIfNeeded(data: fetchedData, fetcher: fetcher)
+            guard let newNode = NodeType(data: decrypted) else { throw CashewDecodingError.decodeFromDataError }
             let resolvedNode = try await newNode.resolveRecursive(fetcher: fetcher)
-            return Self(rawCID: rawCID, node: resolvedNode)
+            return Self(rawCID: rawCID, node: resolvedNode, encryptionInfo: encryptionInfo)
         }
     }
-    
+
     func resolve(fetcher: Fetcher) async throws -> Self {
         if node != nil {
             return self
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
-            return Self(rawCID: rawCID, node: newNode)
+            let decrypted = try decryptIfNeeded(data: fetchedData, fetcher: fetcher)
+            guard let newNode = NodeType(data: decrypted) else { throw CashewDecodingError.decodeFromDataError }
+            return Self(rawCID: rawCID, node: newNode, encryptionInfo: encryptionInfo)
         }
     }
-    
+
     func resolveList(paths: ArrayTrie<ResolutionStrategy>?, nextPaths: ArrayTrie<ResolutionStrategy>, fetcher: Fetcher) async throws -> Self {
         if let node = node {
             return Self(rawCID: rawCID, node: try await node.resolveList(paths: paths, nextPaths: nextPaths, fetcher: fetcher))
         }
         else {
             let fetchedData = try await fetcher.fetch(rawCid: rawCID)
-            guard let newNode = NodeType(data: fetchedData) else { throw CashewDecodingError.decodeFromDataError }
+            let decrypted = try decryptIfNeeded(data: fetchedData, fetcher: fetcher)
+            guard let newNode = NodeType(data: decrypted) else { throw CashewDecodingError.decodeFromDataError }
             return Self(rawCID: rawCID, node: try await newNode.resolveList(paths: paths, nextPaths: nextPaths, fetcher: fetcher))
         }
     }

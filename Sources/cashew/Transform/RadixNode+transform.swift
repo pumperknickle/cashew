@@ -207,6 +207,187 @@ public extension RadixNode {
         return newChildren
     }
     
+    func transform(transforms: ArrayTrie<Transform>, keyProvider: KeyProvider?) throws -> Self? {
+        guard let childPrefix = transforms.getChildPrefix(char: prefix.first!) else { throw TransformErrors.transformFailed }
+        let childPrefixSlice = ArraySlice(childPrefix)
+        let prefixSlice = ArraySlice(prefix)
+        let comparison = compareSlices(childPrefixSlice, prefixSlice)
+        if comparison == 0 {
+            guard let traversedChild = transforms.traverse(path: childPrefix) else { throw TransformErrors.transformFailed }
+            if let transform = traversedChild.get([""]) {
+                switch transform {
+                case .update(let newValue):
+                    let newChildren = try transformChildren(transforms: traversedChild, keyProvider: keyProvider)
+                    guard let newValue = ValueType(newValue) else { throw TransformErrors.transformFailed }
+                    return Self(prefix: prefix, value: newValue, children: newChildren)
+                case .delete:
+                    if value == nil { throw TransformErrors.transformFailed }
+                    let newChildren = try transformChildren(transforms: traversedChild, keyProvider: keyProvider)
+                    if newChildren.count == 0 {
+                        return nil
+                    }
+                    if newChildren.count == 1 {
+                        guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                        return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
+                    }
+                    return Self(prefix: prefix, value: nil, children: newChildren)
+                case .insert(let newValue):
+                    if value != nil { throw TransformErrors.transformFailed }
+                    guard let newValue = ValueType(newValue) else { throw TransformErrors.transformFailed }
+                    return Self(prefix: prefix, value: newValue, children: children)
+                }
+            }
+            let newChildren = traversedChild.isEmpty() ? children : try transformChildren(transforms: traversedChild, keyProvider: keyProvider)
+            if value != nil {
+                if let traversedNext = transforms.traverse([childPrefix]) {
+                    if !traversedNext.isEmpty() {
+                        if let value = value as? Address {
+                            if let newValue = try value.transform(transforms: traversedNext, keyProvider: keyProvider) {
+                                if let newValue = newValue as? ValueType {
+                                    return Self(prefix: prefix, value: newValue, children: newChildren)
+                                }
+                                else {
+                                    throw TransformErrors.transformFailed
+                                }
+                            }
+                            if newChildren.count == 0 {
+                                return nil
+                            }
+                            if newChildren.count == 1 {
+                                guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                                return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
+                            }
+                            return Self(prefix: prefix, value: nil, children: newChildren)
+                        }
+                        else { throw TransformErrors.invalidKey }
+                    }
+                }
+                return Self(prefix: prefix, value: value, children: newChildren)
+            }
+            if newChildren.count == 0 {
+                return nil
+            }
+            if newChildren.count == 1 {
+                guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
+            }
+            return Self(prefix: prefix, value: nil, children: newChildren)
+        }
+        if comparison == 1 {
+            let remainingChildPrefix = childPrefixSlice.dropFirst(prefix.count)
+            guard let traversedChild = transforms.traverse(path: prefix) else { throw TransformErrors.transformFailed }
+            let childChar = remainingChildPrefix.first!
+            if let child = children[childChar] {
+                guard let childNode = child.node else { throw TransformErrors.missingData }
+                if let newChild = try childNode.transform(transforms: traversedChild, keyProvider: keyProvider) {
+                    var newChildren = children
+                    newChildren[childChar] = try child.reEncryptIfNeeded(node: newChild, keyProvider: keyProvider)
+                    return Self(prefix: prefix, value: value, children: newChildren)
+                }
+                else {
+                    var newChildren = children
+                    newChildren.removeValue(forKey: childChar)
+                    if value != nil {
+                        return Self(prefix: prefix, value: value, children: newChildren)
+                    }
+                    if newChildren.count == 0 {
+                        return nil
+                    }
+                    if newChildren.count == 1 {
+                        guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                        return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
+                    }
+                    return Self(prefix: prefix, value: nil, children: newChildren)
+                }
+            }
+            else {
+                let newChild = try Self.insertAll(childChar: childChar, transforms: traversedChild)
+                var newChildren = children
+                newChildren[childChar] = ChildType(node: newChild)
+                return Self(prefix: prefix, value: value, children: newChildren)
+            }
+        }
+        if comparison == 2 {
+            let remainingPrefix = prefixSlice.dropFirst(childPrefix.count)
+            guard let existingNodeChar = remainingPrefix.first else { throw TransformErrors.transformFailed }
+            guard let traversedChild = transforms.traverse(path: childPrefix) else { throw TransformErrors.transformFailed }
+            var newChildren = [Character: ChildType]()
+            var existingNodeHandled = false
+            for childChar in traversedChild.getAllChildCharacters() {
+                if childChar == existingNodeChar {
+                    existingNodeHandled = true
+                    guard let childTransform = traversedChild.traverseChild(childChar) else { throw TransformErrors.transformFailed }
+                    if let newChild = try Self(prefix: String(remainingPrefix), value: value, children: children).transform(transforms: childTransform, keyProvider: keyProvider) {
+                        newChildren[childChar] = ChildType(node: newChild)
+                    }
+                }
+                else {
+                    guard let childTransform = traversedChild.traverseChild(childChar) else { throw TransformErrors.transformFailed }
+                    let newChild = try Self.insertAll(childChar: childChar, transforms: childTransform)
+                    newChildren[childChar] = ChildType(node: newChild)
+                }
+            }
+            if !existingNodeHandled {
+                newChildren[existingNodeChar] = ChildType(node: Self(prefix: String(remainingPrefix), value: value, children: children))
+            }
+            if let newValue = traversedChild.get([""]) {
+                switch newValue {
+                case .insert(let newValue):
+                    guard let newValue = ValueType(newValue) else { throw TransformErrors.transformFailed }
+                    return Self(prefix: childPrefix, value: newValue, children: newChildren)
+                default: throw TransformErrors.transformFailed
+                }
+            }
+            if newChildren.count == 0 {
+                return nil
+            }
+            if newChildren.count == 1 {
+                guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                return Self(prefix: childPrefix + childValue.prefix, value: childValue.value, children: childValue.children)
+            }
+            return Self(prefix: childPrefix, value: nil, children: newChildren)
+        }
+        let common = commonPrefixString(prefixSlice, childPrefixSlice)
+        let prefixSliceRemainder = String(prefixSlice.dropFirst(common.count))
+        let childPrefixSliceRemainder = String(childPrefixSlice.dropFirst(common.count))
+        guard let childTransforms = transforms.traverse(path: common)?.traverseChild(childPrefixSliceRemainder.first!) else { throw TransformErrors.transformFailed }
+        let newChild = try Self.insertAll(childChar: childPrefixSliceRemainder.first!, transforms: childTransforms)
+        var newChildren = [Character: ChildType]()
+        newChildren[childPrefixSliceRemainder.first!] = ChildType(node: newChild)
+        newChildren[prefixSliceRemainder.first!] = ChildType(node: Self(prefix: String(prefixSliceRemainder), value: value, children: children))
+        return Self(prefix: common, value: nil, children: newChildren)
+    }
+
+    func transformChildren(transforms: ArrayTrie<Transform>, keyProvider: KeyProvider?) throws -> [Character: ChildType] {
+        var newChildren = [Character: ChildType]()
+        let allChildChars = Set().union(transforms.getAllChildCharacters()).union(children.keys)
+        for childChar in allChildChars {
+            if let transformChild = transforms.traverseChild(childChar) {
+                if let currentChild = children[childChar] {
+                    if let transformedChild = try currentChild.transform(transforms: transformChild, keyProvider: keyProvider) {
+                        newChildren[childChar] = transformedChild
+                    }
+                    else {
+                        newChildren.removeValue(forKey: childChar)
+                    }
+                }
+                else {
+                    let newChild = try Self.insertAll(childChar: childChar, transforms: transformChild)
+                    newChildren[childChar] = ChildType(node: newChild)
+                }
+            }
+            else {
+                if let currentChild = children[childChar] {
+                    newChildren[childChar] = currentChild
+                }
+                else {
+                    throw TransformErrors.transformFailed
+                }
+            }
+        }
+        return newChildren
+    }
+
     func get(key: ArraySlice<Character>) throws -> ValueType? {
         let prefixSlice = ArraySlice(prefix)
 
@@ -485,6 +666,163 @@ extension RadixNode where ValueType: Header, ValueType.NodeType: MerkleDictionar
         return Self(prefix: common, value: nil, children: newChildren)
     }
     
+    func transform(transforms: ArrayTrie<Transform>, keyProvider: KeyProvider?) throws -> Self? {
+        guard let childPrefix = transforms.getChildPrefix(char: prefix.first!) else { throw TransformErrors.transformFailed }
+        let childPrefixSlice = ArraySlice(childPrefix)
+        let prefixSlice = ArraySlice(prefix)
+        let comparison = compareSlices(childPrefixSlice, prefixSlice)
+        if comparison == 0 {
+            let traversedChild = transforms.traverse(path: childPrefix)
+            if let traversedChild = traversedChild, let transform = traversedChild.get([""]) {
+                if transforms.traverse([prefix]) != nil { throw TransformErrors.transformFailed }
+                switch transform {
+                case .update(let newValue):
+                    let newChildren = try transformChildren(transforms: traversedChild, keyProvider: keyProvider)
+                    guard let newValue = ValueType(newValue) else { throw TransformErrors.transformFailed }
+                    return Self(prefix: prefix, value: newValue, children: newChildren)
+                case .delete:
+                    if value == nil { throw TransformErrors.transformFailed }
+                    let newChildren = try transformChildren(transforms: traversedChild, keyProvider: keyProvider)
+                    if newChildren.count == 0 {
+                        return nil
+                    }
+                    if newChildren.count == 1 {
+                        guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                        return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
+                    }
+                    return Self(prefix: prefix, value: nil, children: newChildren)
+                case .insert(let newValue):
+                    if value != nil { throw TransformErrors.transformFailed }
+                    guard let newValue = ValueType(newValue) else { throw TransformErrors.transformFailed }
+                    return Self(prefix: prefix, value: newValue, children: children)
+                }
+            }
+            let newChildren = traversedChild == nil || traversedChild!.isEmpty() ? children : try transformChildren(transforms: traversedChild!, keyProvider: keyProvider)
+            if let traversedNext = transforms.traverse([childPrefix]) {
+                if !traversedNext.isEmpty() {
+                    if let value = value {
+                        if let newValue = try value.transform(transforms: traversedNext, keyProvider: keyProvider) {
+                            return Self(prefix: prefix, value: newValue, children: newChildren)
+                        }
+                        if newChildren.count == 0 {
+                            return nil
+                        }
+                        if newChildren.count == 1 {
+                            guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                            return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
+                        }
+                        return Self(prefix: prefix, value: nil, children: newChildren)
+                    }
+                    else {
+                        let newDictionary = ValueType.NodeType()
+                        let newHeader = ValueType(node: newDictionary)
+                        let newHeaderValue = try newHeader.transform(transforms: traversedNext, keyProvider: keyProvider)
+                        return Self(prefix: prefix, value: newHeaderValue, children: children)
+                    }
+                }
+            }
+            if newChildren.count == 0 {
+                return nil
+            }
+            if newChildren.count == 1 {
+                guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
+            }
+            return Self(prefix: prefix, value: nil, children: newChildren)
+        }
+        if comparison == 1 {
+            let remainingChildPrefix = childPrefixSlice.dropFirst(prefix.count)
+            guard let traversedChild = transforms.traverse(path: prefix) else { throw TransformErrors.transformFailed }
+            let childChar = remainingChildPrefix.first!
+            if let child = children[childChar] {
+                guard let childNode = child.node else { throw TransformErrors.missingData }
+                if let newChild = try childNode.transform(transforms: traversedChild, keyProvider: keyProvider) {
+                    var newChildren = children
+                    newChildren[childChar] = try child.reEncryptIfNeeded(node: newChild, keyProvider: keyProvider)
+                    return Self(prefix: prefix, value: value, children: newChildren)
+                }
+                else {
+                    var newChildren = children
+                    newChildren.removeValue(forKey: childChar)
+                    if value != nil {
+                        return Self(prefix: prefix, value: value, children: newChildren)
+                    }
+                    if newChildren.count == 0 {
+                        return nil
+                    }
+                    if newChildren.count == 1 {
+                        guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                        return Self(prefix: prefix + childValue.prefix, value: childValue.value, children: childValue.children)
+                    }
+                    return Self(prefix: prefix, value: nil, children: newChildren)
+                }
+            }
+            else {
+                let newChild = try Self.insertAll(childChar: childChar, transforms: traversedChild)
+                var newChildren = children
+                newChildren[childChar] = ChildType(node: newChild)
+                return Self(prefix: prefix, value: value, children: newChildren)
+            }
+        }
+        if comparison == 2 {
+            let remainingPrefix = prefixSlice.dropFirst(childPrefix.count)
+            guard let existingNodeChar = remainingPrefix.first else { throw TransformErrors.transformFailed }
+            guard let traversedChild = transforms.traverse(path: childPrefix) else { throw TransformErrors.transformFailed }
+            var newChildren = [Character: ChildType]()
+            var existingNodeHandled = false
+            for childChar in traversedChild.getAllChildCharacters() {
+                if childChar == existingNodeChar {
+                    existingNodeHandled = true
+                    guard let childTransform = traversedChild.traverseChild(childChar) else { throw TransformErrors.transformFailed }
+                    if let newChild = try Self(prefix: String(remainingPrefix), value: value, children: children).transform(transforms: childTransform, keyProvider: keyProvider) {
+                        newChildren[childChar] = ChildType(node: newChild)
+                    }
+                }
+                else {
+                    guard let childTransform = traversedChild.traverseChild(childChar) else { throw TransformErrors.transformFailed }
+                    let newChild = try Self.insertAll(childChar: childChar, transforms: childTransform)
+                    newChildren[childChar] = ChildType(node: newChild)
+                }
+            }
+            if !existingNodeHandled {
+                newChildren[existingNodeChar] = ChildType(node: Self(prefix: String(remainingPrefix), value: value, children: children))
+            }
+            if let newValue = traversedChild.get([""]) {
+                switch newValue {
+                case .insert(let newValue):
+                    guard let newValue = ValueType(newValue) else { throw TransformErrors.transformFailed }
+                    return Self(prefix: childPrefix, value: newValue, children: newChildren)
+                default: throw TransformErrors.transformFailed
+                }
+            }
+            if let traversedNext = transforms.traverse([childPrefix]) {
+                if !traversedNext.isEmpty() {
+                    let newDictionary = ValueType.NodeType()
+                    let newHeader = ValueType(node: newDictionary)
+                    let newHeaderValue = try newHeader.transform(transforms: traversedNext, keyProvider: keyProvider)
+                    return Self(prefix: childPrefix, value: newHeaderValue, children: newChildren)
+                }
+            }
+            if newChildren.count == 0 {
+                return nil
+            }
+            if newChildren.count == 1 {
+                guard let childValue = newChildren.first?.value.node else { throw TransformErrors.transformFailed }
+                return Self(prefix: childPrefix + childValue.prefix, value: childValue.value, children: childValue.children)
+            }
+            return Self(prefix: childPrefix, value: nil, children: newChildren)
+        }
+        let common = commonPrefixString(prefixSlice, childPrefixSlice)
+        let prefixSliceRemainder = String(prefixSlice.dropFirst(common.count))
+        let childPrefixSliceRemainder = String(childPrefixSlice.dropFirst(common.count))
+        guard let childTransforms = transforms.traverse(path: common)?.traverseChild(childPrefixSliceRemainder.first!) else { throw TransformErrors.transformFailed }
+        let newChild = try Self.insertAll(childChar: childPrefixSliceRemainder.first!, transforms: childTransforms)
+        var newChildren = [Character: ChildType]()
+        newChildren[childPrefixSliceRemainder.first!] = ChildType(node: newChild)
+        newChildren[prefixSliceRemainder.first!] = ChildType(node: Self(prefix: String(prefixSliceRemainder), value: value, children: children))
+        return Self(prefix: common, value: nil, children: newChildren)
+    }
+
     static func insertAll(childChar: Character, transforms: ArrayTrie<Transform>) throws -> Self {
         guard let childPrefix = transforms.getChildPrefix(char: childChar) else { throw TransformErrors.transformFailed }
         guard let traversedTransforms = transforms.traverse(path: childPrefix) else { throw TransformErrors.transformFailed }
