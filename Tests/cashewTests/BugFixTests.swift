@@ -415,6 +415,98 @@ struct BugFixTests {
         #expect(try result.get(key: "abc") == "val1")
     }
 
+    // MARK: - Count consistency diagnostics
+
+    @Test("Transform delete two keys sharing prefix maintains correct count")
+    func testTransformDeleteTwoKeysSharePrefix() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "abc", value: "v1")
+            .inserting(key: "abcd", value: "v2")
+            .inserting(key: "xyz", value: "v3")
+        #expect(dict.count == 3)
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["abc"], value: .delete)
+        transforms.set(["abcd"], value: .delete)
+
+        let result = try dict.transform(transforms: transforms)!
+        #expect(try result.get(key: "abc") == nil)
+        #expect(try result.get(key: "abcd") == nil)
+        #expect(try result.get(key: "xyz") == "v3")
+        #expect(result.count == 1)
+    }
+
+    @Test("Transform delete key that is prefix of another key")
+    func testTransformDeletePrefixKey() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "app", value: "v1")
+            .inserting(key: "apple", value: "v2")
+        #expect(dict.count == 2)
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["app"], value: .delete)
+
+        let result = try dict.transform(transforms: transforms)!
+        #expect(try result.get(key: "app") == nil)
+        #expect(try result.get(key: "apple") == "v2")
+        #expect(result.count == 1)
+    }
+
+    @Test("Transform mixed operations on keys sharing prefix")
+    func testTransformMixedOpsSharePrefix() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "apple", value: "v1")
+            .inserting(key: "app", value: "v2")
+            .inserting(key: "application", value: "v3")
+        #expect(dict.count == 3)
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["app"], value: .delete)
+        transforms.set(["apex"], value: .insert("v4"))
+        transforms.set(["apple"], value: .update("updated"))
+
+        let result = try dict.transform(transforms: transforms)!
+        #expect(try result.get(key: "app") == nil)
+        #expect(try result.get(key: "apple") == "updated")
+        #expect(try result.get(key: "application") == "v3")
+        #expect(try result.get(key: "apex") == "v4")
+        #expect(result.count == 3)
+    }
+
+    @Test("Transform delete all entries under same first character")
+    func testTransformDeleteAllUnderSameChar() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "abc", value: "v1")
+            .inserting(key: "abd", value: "v2")
+            .inserting(key: "xyz", value: "v3")
+        #expect(dict.count == 3)
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["abc"], value: .delete)
+        transforms.set(["abd"], value: .delete)
+
+        let result = try dict.transform(transforms: transforms)!
+        #expect(try result.get(key: "abc") == nil)
+        #expect(try result.get(key: "abd") == nil)
+        #expect(try result.get(key: "xyz") == "v3")
+        #expect(result.count == 1)
+    }
+
+    @Test("Transform insert key that is prefix of existing key")
+    func testTransformInsertPrefixOfExistingKey() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "apple", value: "v1")
+        #expect(dict.count == 1)
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["app"], value: .insert("v2"))
+
+        let result = try dict.transform(transforms: transforms)!
+        #expect(try result.get(key: "apple") == "v1")
+        #expect(try result.get(key: "app") == "v2")
+        #expect(result.count == 2)
+    }
+
     // MARK: - Existing functionality regression tests
 
     @Test("Basic dictionary operations still work after fixes")
