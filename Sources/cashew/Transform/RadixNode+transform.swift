@@ -128,10 +128,13 @@ public extension RadixNode {
         }
         if comparison == 2 {
             let remainingPrefix = prefixSlice.dropFirst(childPrefix.count)
+            guard let existingNodeChar = remainingPrefix.first else { throw TransformErrors.transformFailed }
             guard let traversedChild = transforms.traverse(path: childPrefix) else { throw TransformErrors.transformFailed }
             var newChildren = [Character: ChildType]()
+            var existingNodeHandled = false
             for childChar in traversedChild.getAllChildCharacters() {
-                if childChar == remainingPrefix.first! {
+                if childChar == existingNodeChar {
+                    existingNodeHandled = true
                     guard let childTransform = traversedChild.traverseChild(childChar) else { throw TransformErrors.transformFailed }
                     if let newChild = try Self(prefix: String(remainingPrefix), value: value, children: children).transform(transforms: childTransform) {
                         newChildren[childChar] = ChildType(node: newChild)
@@ -142,6 +145,9 @@ public extension RadixNode {
                     let newChild = try Self.insertAll(childChar: childChar, transforms: childTransform)
                     newChildren[childChar] = ChildType(node: newChild)
                 }
+            }
+            if !existingNodeHandled {
+                newChildren[existingNodeChar] = ChildType(node: Self(prefix: String(remainingPrefix), value: value, children: children))
             }
             if let newValue = traversedChild.get([""]) {
                 switch newValue {
@@ -229,7 +235,7 @@ public extension RadixNode {
                 return nil
             }
             if children.count == 1 {
-                guard let childNode = children.first!.value.node else { throw TransformErrors.missingData }
+                guard let childNode = children.first?.value.node else { throw TransformErrors.missingData }
                 return Self(prefix: prefix + childNode.prefix, value: childNode.value, children: childNode.children)
             }
             return Self(prefix: prefix, value: nil, children: children)
@@ -422,10 +428,13 @@ extension RadixNode where ValueType: Header, ValueType.NodeType: MerkleDictionar
         }
         if comparison == 2 {
             let remainingPrefix = prefixSlice.dropFirst(childPrefix.count)
+            guard let existingNodeChar = remainingPrefix.first else { throw TransformErrors.transformFailed }
             guard let traversedChild = transforms.traverse(path: childPrefix) else { throw TransformErrors.transformFailed }
             var newChildren = [Character: ChildType]()
+            var existingNodeHandled = false
             for childChar in traversedChild.getAllChildCharacters() {
-                if childChar == remainingPrefix.first! {
+                if childChar == existingNodeChar {
+                    existingNodeHandled = true
                     guard let childTransform = traversedChild.traverseChild(childChar) else { throw TransformErrors.transformFailed }
                     if let newChild = try Self(prefix: String(remainingPrefix), value: value, children: children).transform(transforms: childTransform) {
                         newChildren[childChar] = ChildType(node: newChild)
@@ -436,6 +445,9 @@ extension RadixNode where ValueType: Header, ValueType.NodeType: MerkleDictionar
                     let newChild = try Self.insertAll(childChar: childChar, transforms: childTransform)
                     newChildren[childChar] = ChildType(node: newChild)
                 }
+            }
+            if !existingNodeHandled {
+                newChildren[existingNodeChar] = ChildType(node: Self(prefix: String(remainingPrefix), value: value, children: children))
             }
             if let newValue = traversedChild.get([""]) {
                 switch newValue {

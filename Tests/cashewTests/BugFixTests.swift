@@ -354,6 +354,67 @@ struct BugFixTests {
         #expect(result == nil)
     }
 
+    // MARK: - Bug 16: Transform comparison==2 preserves existing node data
+
+    @Test("Transform insert at prefix midpoint preserves existing key")
+    func testTransformInsertAtPrefixMidpointPreservesExisting() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "alphabet", value: "val1")
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["alice"], value: .insert("val2"))
+        transforms.set(["alex"], value: .insert("val3"))
+
+        let result = try dict.transform(transforms: transforms)!
+        #expect(result.count == 3)
+        #expect(try result.get(key: "alphabet") == "val1")
+        #expect(try result.get(key: "alice") == "val2")
+        #expect(try result.get(key: "alex") == "val3")
+    }
+
+    @Test("Transform insert at prefix midpoint with single new key preserves existing")
+    func testTransformInsertSingleKeyAtMidpointPreservesExisting() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "abcde", value: "original")
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["abx"], value: .insert("new"))
+
+        let result = try dict.transform(transforms: transforms)!
+        #expect(result.count == 2)
+        #expect(try result.get(key: "abcde") == "original")
+        #expect(try result.get(key: "abx") == "new")
+    }
+
+    @Test("Transform insert where existing and new keys share prefix but diverge")
+    func testTransformInsertDivergingKeys() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "hello", value: "world")
+            .inserting(key: "help", value: "me")
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set(["hero"], value: .insert("new"))
+
+        let result = try dict.transform(transforms: transforms)!
+        #expect(result.count == 3)
+        #expect(try result.get(key: "hello") == "world")
+        #expect(try result.get(key: "help") == "me")
+        #expect(try result.get(key: "hero") == "new")
+    }
+
+    // MARK: - Bug 17: Consistent safe unwrap in deleting
+
+    @Test("Deleting single child node uses safe unwrap")
+    func testDeletingSingleChildNodeSafeUnwrap() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "abc", value: "val1")
+            .inserting(key: "abd", value: "val2")
+
+        let result = try dict.deleting(key: "abd")
+        #expect(result.count == 1)
+        #expect(try result.get(key: "abc") == "val1")
+    }
+
     // MARK: - Existing functionality regression tests
 
     @Test("Basic dictionary operations still work after fixes")
