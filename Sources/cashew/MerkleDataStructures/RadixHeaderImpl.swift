@@ -13,7 +13,7 @@ public struct RadixHeaderImpl<Value>: RadixHeader where Value: Codable, Value: S
     
     public init(rawCID: String, node: NodeType?) {
         self.rawCID = rawCID
-        self.rawNode = node == nil ? nil : Box(node!)
+        self.rawNode = node.map { Box($0) }
     }
     
     public init(node: NodeType) {

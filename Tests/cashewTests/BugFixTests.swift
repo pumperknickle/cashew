@@ -277,6 +277,83 @@ struct BugFixTests {
         }
     }
 
+    // MARK: - Bug 12: Transform with invalid update string throws instead of silently deleting
+
+    @Test("Transform with invalid update string throws TransformErrors")
+    func testTransformInvalidUpdateThrows() throws {
+        let scalar = TestScalar(val: 1)
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set([], value: .update("this-is-not-valid-json"))
+
+        #expect(throws: TransformErrors.self) {
+            _ = try scalar.transform(transforms: transforms)
+        }
+    }
+
+    @Test("Transform with valid update string succeeds")
+    func testTransformValidUpdateSucceeds() throws {
+        let scalar = TestScalar(val: 1)
+        let newScalar = TestScalar(val: 99)
+
+        var transforms = ArrayTrie<Transform>()
+        transforms.set([], value: .update(newScalar.description))
+
+        let result = try scalar.transform(transforms: transforms)
+        #expect(result != nil)
+        #expect(result!.val == 99)
+    }
+
+    // MARK: - Bug 13: transformAfterUpdate method name typo fixed
+
+    @Test("transformAfterUpdate is callable (typo fixed)")
+    func testTransformAfterUpdateCallable() throws {
+        let dict = try MerkleDictionaryImpl<String>(children: [:], count: 0)
+            .inserting(key: "a", value: "1")
+
+        let transforms = ArrayTrie<Transform>()
+        let result = try dict.transformAfterUpdate(transforms: transforms)
+        #expect(result != nil)
+    }
+
+    // MARK: - Bug 14: RadixHeaderImpl safe optional mapping
+
+    @Test("RadixHeaderImpl init with nil node produces nil rawNode")
+    func testRadixHeaderImplNilNode() throws {
+        let header = RadixHeaderImpl<String>(rawCID: "test", node: nil)
+        #expect(header.node == nil)
+        #expect(header.rawCID == "test")
+    }
+
+    @Test("RadixHeaderImpl init with non-nil node produces valid rawNode")
+    func testRadixHeaderImplNonNilNode() throws {
+        typealias DictType = MerkleDictionaryImpl<String>
+        let dict = try DictType(children: [:], count: 0)
+            .inserting(key: "k", value: "v")
+
+        let child = dict.children["k"]!
+        let node = child.node!
+        let header = RadixHeaderImpl<String>(rawCID: "test", node: node)
+        #expect(header.node != nil)
+        #expect(header.node!.prefix == node.prefix)
+    }
+
+    // MARK: - Bug 15: LosslessStringConvertible safe init from data
+
+    @Test("LosslessStringConvertible init from valid UTF-8 data succeeds")
+    func testLosslessStringConvertibleValidData() throws {
+        let data = "hello".data(using: .utf8)!
+        let result = String(data: data)
+        #expect(result == "hello")
+    }
+
+    @Test("LosslessStringConvertible init from invalid data returns nil")
+    func testLosslessStringConvertibleInvalidData() throws {
+        let data = Data([0xFF, 0xFE, 0x80, 0x81])
+        let result = String(data: data)
+        #expect(result == nil)
+    }
+
     // MARK: - Existing functionality regression tests
 
     @Test("Basic dictionary operations still work after fixes")

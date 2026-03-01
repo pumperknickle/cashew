@@ -6,8 +6,7 @@ public extension LosslessStringConvertible {
     }
 
     init?(data: Data) {
-        let str = String(data: data, encoding: .utf8)
-        if str == nil { return nil }
-        self.init(str!)
+        guard let str = String(data: data, encoding: .utf8) else { return nil }
+        self.init(str)
     }
 }

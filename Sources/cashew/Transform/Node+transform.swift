@@ -5,12 +5,14 @@ public extension Node {
     func transform(transforms: ArrayTrie<Transform>) throws -> Self? {
         if transforms.isEmpty() { return self }
         switch transforms.get([]) {
-            case .update(let newNodeString): return try Self(newNodeString)?.transformAterUpdate(transforms: transforms)
-            default: return try transformAterUpdate(transforms: transforms)
+            case .update(let newNodeString):
+                guard let updatedNode = Self(newNodeString) else { throw TransformErrors.transformFailed }
+                return try updatedNode.transformAfterUpdate(transforms: transforms)
+            default: return try transformAfterUpdate(transforms: transforms)
         }
     }
     
-    func transformAterUpdate(transforms: ArrayTrie<Transform>) throws -> Self? {
+    func transformAfterUpdate(transforms: ArrayTrie<Transform>) throws -> Self? {
         var newProperties: [PathSegment: Address] = [:]
         
         let allChildKeys = Set<String>().union(transforms.getAllChildKeys()).union(properties())
