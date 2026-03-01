@@ -359,7 +359,7 @@ At store time, the header re-encrypts deterministically using the IV stored in `
 
 Encryption strategies are specified via `ArrayTrie<EncryptionStrategy>`, where paths map to parts of the dictionary's key space:
 
-- **`.targeted(key)`** — Encrypts the **value** at the matched path. The trie structure stays plaintext (you can enumerate keys) but the data at each key is opaque without the key.
+- **`.targeted(key)`** — At root (`[""]`): encrypts the **trie structure** and values at specifically targeted sub-paths. At a specific path: encrypts only the **value** at that path.
 - **`.list(key)`** — Encrypts the **trie structure** (RadixHeaders). You can't enumerate keys without decrypting, but values remain as plaintext CIDs.
 - **`.recursive(key)`** — Encrypts **everything** — both trie structure and values — with the same key.
 

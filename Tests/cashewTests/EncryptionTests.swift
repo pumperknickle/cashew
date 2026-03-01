@@ -304,6 +304,106 @@ struct TargetedEncryptionTests {
         let bobResolved = try await bobVal!.resolve(fetcher: fetcher)
         #expect(bobResolved.node!.val == 2)
     }
+    @Test("Root targeted encryption encrypts trie structure")
+    func testRootTargetedEncryptsTrieStructure() throws {
+        let key = SymmetricKey(size: .bits256)
+        var dict = DictType()
+        dict = try dict.inserting(key: "alice", value: HeaderImpl(node: TestScalar(val: 1)))
+        dict = try dict.inserting(key: "bob", value: HeaderImpl(node: TestScalar(val: 2)))
+        let header = HeaderImpl(node: dict)
+
+        var encryption = ArrayTrie<EncryptionStrategy>()
+        encryption.set([""], value: .targeted(key))
+        let encrypted = try header.encrypt(encryption: encryption)
+
+        let encDict = encrypted.node!
+        for (_, child) in encDict.children {
+            #expect(child.encryptionInfo != nil)
+        }
+    }
+
+    @Test("Root targeted encryption does NOT encrypt values without sub-path override")
+    func testRootTargetedDoesNotEncryptValues() throws {
+        let key = SymmetricKey(size: .bits256)
+        var dict = DictType()
+        dict = try dict.inserting(key: "alice", value: HeaderImpl(node: TestScalar(val: 1)))
+        dict = try dict.inserting(key: "bob", value: HeaderImpl(node: TestScalar(val: 2)))
+        let header = HeaderImpl(node: dict)
+
+        var encryption = ArrayTrie<EncryptionStrategy>()
+        encryption.set([""], value: .targeted(key))
+        let encrypted = try header.encrypt(encryption: encryption)
+
+        let encDict = encrypted.node!
+        let aliceVal = try encDict.get(key: "alice")
+        #expect(aliceVal != nil)
+        #expect(aliceVal!.encryptionInfo == nil)
+
+        let bobVal = try encDict.get(key: "bob")
+        #expect(bobVal != nil)
+        #expect(bobVal!.encryptionInfo == nil)
+    }
+
+    @Test("Root targeted with sub-path override encrypts trie and targeted value")
+    func testRootTargetedWithSubPathOverride() throws {
+        let key = SymmetricKey(size: .bits256)
+        let aliceKey = SymmetricKey(size: .bits256)
+        var dict = DictType()
+        dict = try dict.inserting(key: "alice", value: HeaderImpl(node: TestScalar(val: 1)))
+        dict = try dict.inserting(key: "bob", value: HeaderImpl(node: TestScalar(val: 2)))
+        let header = HeaderImpl(node: dict)
+
+        var encryption = ArrayTrie<EncryptionStrategy>()
+        encryption.set([""], value: .targeted(key))
+        encryption.set(["alice"], value: .targeted(aliceKey))
+        let encrypted = try header.encrypt(encryption: encryption)
+
+        let encDict = encrypted.node!
+        for (_, child) in encDict.children {
+            #expect(child.encryptionInfo != nil)
+        }
+
+        let aliceVal = try encDict.get(key: "alice")
+        #expect(aliceVal != nil)
+        #expect(aliceVal!.encryptionInfo != nil)
+
+        let bobVal = try encDict.get(key: "bob")
+        #expect(bobVal != nil)
+        #expect(bobVal!.encryptionInfo == nil)
+    }
+
+    @Test("Root targeted store/resolve round-trip")
+    func testRootTargetedStoreResolve() async throws {
+        let key = SymmetricKey(size: .bits256)
+        let fetcher = TestKeyProvidingStoreFetcher()
+        fetcher.registerKey(key)
+
+        var dict = DictType()
+        dict = try dict.inserting(key: "alice", value: HeaderImpl(node: TestScalar(val: 1)))
+        dict = try dict.inserting(key: "bob", value: HeaderImpl(node: TestScalar(val: 2)))
+        let header = HeaderImpl(node: dict)
+
+        var encryption = ArrayTrie<EncryptionStrategy>()
+        encryption.set([""], value: .targeted(key))
+        let encrypted = try header.encrypt(encryption: encryption)
+        try encrypted.storeRecursively(storer: fetcher)
+
+        var paths = ArrayTrie<ResolutionStrategy>()
+        paths.set([""], value: .list)
+        paths.set(["alice"], value: .targeted)
+        paths.set(["bob"], value: .targeted)
+        let resolved = try await encrypted.removingNode().resolve(paths: paths, fetcher: fetcher)
+
+        let aliceVal = try resolved.node!.get(key: "alice")
+        #expect(aliceVal != nil)
+        let aliceResolved = try await aliceVal!.resolve(fetcher: fetcher)
+        #expect(aliceResolved.node!.val == 1)
+
+        let bobVal = try resolved.node!.get(key: "bob")
+        #expect(bobVal != nil)
+        let bobResolved = try await bobVal!.resolve(fetcher: fetcher)
+        #expect(bobResolved.node!.val == 2)
+    }
 }
 
 @Suite("List Encryption Strategy Tests")

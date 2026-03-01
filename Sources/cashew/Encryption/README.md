@@ -167,19 +167,30 @@ Strategies are specified via `ArrayTrie<EncryptionStrategy>`, where paths in the
 
 ### targeted(key)
 
-Encrypts the **value** at the matched path. The trie structure (RadixHeaders that form the key index) stays plaintext — you can still enumerate keys and navigate to the right path, but the data stored at that key is opaque without the key.
+Encrypts the **trie structure** (RadixHeaders) and the **values** at specifically targeted sub-paths. When applied at the root (`[""]`), the entire trie is encrypted — you cannot enumerate keys without the key. Values are only encrypted if a sub-path override targets them.
+
+When applied at a specific path (e.g., `["alice"]`), only the value at that path is encrypted; the trie structure leading to it stays plaintext.
 
 ```swift
+// Root targeted: encrypts trie structure, values stay plaintext
 var encryption = ArrayTrie<EncryptionStrategy>()
-encryption.set(["alice"], value: .targeted(key))
+encryption.set([""], value: .targeted(key))
 let encrypted = try header.encrypt(encryption: encryption)
+
+// You CANNOT see what keys exist without the key
+// After decrypting the trie, values are plaintext CIDs
+
+// Path-specific targeted: encrypts only the value at that path
+var encryption2 = ArrayTrie<EncryptionStrategy>()
+encryption2.set(["alice"], value: .targeted(key))
+let encrypted2 = try header.encrypt(encryption: encryption2)
 
 // You CAN see that "alice" exists as a key
 // You CANNOT read the value at "alice" without the key
 // "bob" (if it exists) is completely unaffected
 ```
 
-**Use case**: Encrypt specific sensitive values while keeping the key namespace public. Like encrypting the "ssn" column in a database while leaving "name" readable.
+**Use case**: Encrypt the trie structure while selectively encrypting specific values. Like encrypting a database's row index while also encrypting the "ssn" column but leaving "name" readable.
 
 ### list(key)
 

@@ -76,12 +76,13 @@ public extension RadixNode {
     }
 
     func encryptTargeted(key: SymmetricKey, overrides: ArrayTrie<EncryptionStrategy>?) throws -> Self {
-        var newChildren = children
-        if let overrides = overrides {
-            for (char, child) in children {
-                if let childEnc = overrides.traverseChild(char) {
-                    newChildren[char] = try child.encrypt(encryption: childEnc)
-                }
+        var newChildren = [Character: ChildType]()
+        for (char, child) in children {
+            let childOverrides = overrides?.traverseChild(char)
+            if let childOverrides = childOverrides, !childOverrides.getAllValues().isEmpty {
+                newChildren[char] = try child.encryptRecursiveWithOverrides(key: key, overrides: childOverrides)
+            } else {
+                newChildren[char] = try child.encryptTargeted(key: key, overrides: nil)
             }
         }
 
@@ -109,7 +110,7 @@ extension RadixHeader {
                 return try Self(node: encryptedNode, key: overrideKey)
             case .targeted(let overrideKey):
                 let encryptedNode = try node.encryptTargeted(key: overrideKey, overrides: remaining)
-                return Self(node: encryptedNode)
+                return try Self(node: encryptedNode, key: overrideKey)
             case .list(let overrideKey):
                 let encryptedNode = try node.encryptList(key: overrideKey, overrides: remaining)
                 return try Self(node: encryptedNode, key: overrideKey)
@@ -125,7 +126,7 @@ extension RadixHeader {
                 return try Self(node: encryptedNode, key: overrideKey)
             case .targeted(let overrideKey):
                 let encryptedNode = try node.encryptTargeted(key: overrideKey, overrides: remaining)
-                return Self(node: encryptedNode)
+                return try Self(node: encryptedNode, key: overrideKey)
             case .list(let overrideKey):
                 let encryptedNode = try node.encryptList(key: overrideKey, overrides: remaining)
                 return try Self(node: encryptedNode, key: overrideKey)

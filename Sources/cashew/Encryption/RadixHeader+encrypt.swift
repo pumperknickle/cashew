@@ -23,6 +23,6 @@ public extension RadixHeader {
     func encryptTargeted(key: SymmetricKey, overrides: ArrayTrie<EncryptionStrategy>?) throws -> Self {
         guard let node = node else { throw DataErrors.nodeNotAvailable }
         let encryptedNode = try node.encryptTargeted(key: key, overrides: overrides)
-        return Self(node: encryptedNode)
+        return try Self(node: encryptedNode, key: key)
     }
 }
