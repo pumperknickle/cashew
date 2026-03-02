@@ -1,6 +1,6 @@
-import Crypto
+@preconcurrency import Crypto
 
-public enum EncryptionStrategy: Sendable {
+public enum EncryptionStrategy: @unchecked Sendable {
     case targeted(SymmetricKey)
     case list(SymmetricKey)
     case recursive(SymmetricKey)

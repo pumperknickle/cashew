@@ -6,7 +6,10 @@ import PackageDescription
 let package = Package(
     name: "cashew",
     platforms: [
-        .macOS(.v12)
+        .macOS(.v12),
+        .iOS(.v15),
+        .watchOS(.v8),
+        .tvOS(.v15)
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
@@ -35,7 +38,8 @@ let package = Package(
                 .product(name: "CollectionConcurrencyKit", package: "CollectionConcurrencyKit"),
                 .product(name: "CID", package: "swift-cid"),
                 .product(name: "Multicodec", package: "swift-multicodec"),
-                .product(name: "Multihash", package: "swift-multihash")]),
+                .product(name: "Multihash", package: "swift-multihash")],
+            exclude: ["Encryption/README.md"]),
         .testTarget(
             name: "cashewTests",
             dependencies: ["cashew"]
